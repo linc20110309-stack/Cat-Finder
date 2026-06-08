@@ -1677,71 +1677,142 @@ GameManager.prototype.renderGame = function() {
     
     var GRID_SIZE = this.currentLevelData.size;
     
+    // 整体容器 - 白色圆角卡片+阴影
     ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = 'rgba(102, 126, 234, 0.2)';
+    ctx.shadowBlur = 30;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 10;
     roundRect(ctx, 30, 30, GAME_WIDTH - 60, GAME_HEIGHT - 60, 40);
     ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
     
-    var gradient = ctx.createLinearGradient(30, 30, GAME_WIDTH - 30, 120);
-    gradient.addColorStop(0, '#667eea');
-    gradient.addColorStop(1, '#764ba2');
-    ctx.fillStyle = gradient;
-    roundRect(ctx, 30, 30, GAME_WIDTH - 60, 90, 30);
+    // ========== 顶部区域 - 渐变背景+圆角卡片 ==========
+    var topGradient = ctx.createLinearGradient(30, 30, GAME_WIDTH - 30, 140);
+    topGradient.addColorStop(0, '#667eea');
+    topGradient.addColorStop(1, '#764ba2');
+    ctx.fillStyle = topGradient;
+    roundRect(ctx, 30, 30, GAME_WIDTH - 60, 110, 30);
     ctx.fill();
     
-    // 标题居中显示（垂直居中于顶部栏 y=30-120，中心 y=75）
+    // 顶部区域底部圆角覆盖
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 36px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('猫咪归位', GAME_WIDTH / 2, 75);
+    roundRect(ctx, 30, 110, GAME_WIDTH - 60, 30, 0);
+    ctx.fill();
     
-    // 设置按钮（左上角圆形按钮，垂直居中）
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    // 设置按钮 - 圆形毛玻璃效果
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
     ctx.beginPath();
-    ctx.arc(70, 75, 24, 0, Math.PI * 2);
+    ctx.arc(70, 75, 26, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#ffffff';
-    ctx.font = '26px sans-serif';
+    ctx.font = '24px sans-serif';
+    ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('⚙', 70, 75);
     
-    ctx.fillStyle = '#f8fafc';
-    roundRect(ctx, 100, 150, 550, 60, 30);
-    ctx.fill();
-    
-    ctx.fillStyle = '#667eea';
-    roundRect(ctx, 110, 160, 100, 40, 20);
-    ctx.fill();
+    // 游戏名称 - 居中
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 26px sans-serif';
+    ctx.font = 'bold 32px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('Lv.' + (this.currentLevel + 1), 160, 185);
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🐱 找猫大师', GAME_WIDTH / 2, 60);
     
-    var heartSize = 28;
+    // ========== 信息卡片区域 ==========
+    // 关卡信息卡片
+    ctx.fillStyle = '#667eea';
+    ctx.shadowColor = 'rgba(102, 126, 234, 0.4)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetY = 3;
+    roundRect(ctx, 50, 160, 120, 45, 22);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 22px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('第 ' + (this.currentLevel + 1) + ' 关', 110, 187);
+    
+    // 生命值卡片
     var heartY = 160;
-    var heartCenterX = 375;
-    // 根据 maxMistakes 动态绘制心形
     var maxHearts = this.maxMistakes || 2;
-    var heartSpacing = 30;
-    var totalWidth = (maxHearts - 1) * heartSpacing;
-    var startHeartX = heartCenterX - totalWidth / 2;
+    var heartSize = 30;
+    var heartSpacing = 36;
+    var totalHeartWidth = (maxHearts - 1) * heartSpacing + heartSize;
+    var startHeartX = 240 - totalHeartWidth / 2;
+    
     for (var h = 0; h < maxHearts; h++) {
-        drawHeart(ctx, startHeartX + h * heartSpacing, heartY, heartSize, this.mistakesLeft >= (h + 1) ? '#ff4757' : '#cccccc');
+        var heartX = startHeartX + h * heartSpacing;
+        var heartColor = this.mistakesLeft >= (h + 1) ? '#ff4757' : '#cccccc';
+        drawHeart(ctx, heartX, heartY, heartSize, heartColor);
     }
     
-    ctx.fillStyle = '#666666';
-    ctx.font = '26px sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillText('连击:' + this.streak, 640, 185);
+    // 连胜卡片
+    ctx.fillStyle = '#ff9800';
+    ctx.shadowColor = 'rgba(255, 152, 0, 0.4)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetY = 3;
+    roundRect(ctx, 430, 160, 120, 45, 22);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 22px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('🔥 ' + this.streak, 490, 187);
     
+    // ========== 中部规则提示卡片 ==========
+    ctx.fillStyle = '#fff9e6';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.08)';
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetY = 4;
+    roundRect(ctx, 50, 230, 650, 80, 16);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    
+    ctx.fillStyle = '#f57c00';
+    ctx.font = 'bold 18px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('📜 游戏规则', 70, 255);
+    
+    // 规则三栏
+    var ruleY = 275;
+    var rules = [
+        { icon: '🐱', text: '每种颜色1只猫' },
+        { icon: '📏', text: '每行每列1只' },
+        { icon: '🚫', text: '猫不能相邻' }
+    ];
+    
+    for (var r = 0; r < 3; r++) {
+        var ruleX = 80 + r * 210;
+        ctx.fillStyle = '#ffffff';
+        roundRect(ctx, ruleX, ruleY, 190, 30, 8);
+        ctx.fill();
+        ctx.fillStyle = '#555555';
+        ctx.font = '16px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(rules[r].icon + ' ' + rules[r].text, ruleX + 95, ruleY + 20);
+    }
+    
+    // ========== 剩余猫咪信息 ==========
     var remainingCats = GRID_SIZE - (this.foundCats ? this.foundCats.length : 0);
-    ctx.font = '24px sans-serif';
-    ctx.fillText('🐱 剩余: ' + remainingCats, GAME_WIDTH / 2, 255);
+    ctx.fillStyle = '#ff9800';
+    ctx.font = 'bold 20px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('🐱 剩余猫咪: ' + remainingCats, GAME_WIDTH / 2, 340);
     
+    // ========== 棋盘区域 ==========
     this.renderBoard();
+    
+    // ========== 底部按钮 ==========
     this.renderButtons();
+    
+    // ========== 粒子效果 ==========
     this.renderParticles();
     
+    // ========== 弹窗 ==========
     if (this.gameStatus === 'win') this.renderWinModal();
     else if (this.gameStatus === 'fail') this.renderFailModal();
 };
