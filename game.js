@@ -675,26 +675,50 @@ var SaveSystem = {
 };
 
 var REGION_COLORS = {
-    'A': 'rgb(255, 71, 71)',     // 红色
-    'B': 'rgb(255, 140, 0)',    // 深橙色
-    'C': 'rgb(255, 215, 0)',    // 金色
-    'D': 'rgb(50, 205, 50)',    // 绿色
-    'E': 'rgb(0, 191, 255)',    // 深天蓝
-    'F': 'rgb(30, 144, 255)',   // 道奇蓝
-    'G': 'rgb(138, 43, 226)',   // 蓝紫色
-    'H': 'rgb(186, 85, 211)',   // 中紫色
-    'I': 'rgb(255, 105, 180)',  // 热粉色
-    'J': 'rgb(255, 69, 0)',     // 深红色
-    'K': 'rgb(255, 165, 0)',    // 橙色
-    'L': 'rgb(0, 206, 209)',    // 深青色
-    'M': 'rgb(65, 105, 225)',   // 皇家蓝
-    'N': 'rgb(219, 112, 147)',  // 印度红
-    'O': 'rgb(147, 112, 219)',  // 淡紫色
-    'P': 'rgb(100, 149, 237)',  // 矢车菊蓝
-    'Q': 'rgb(220, 20, 60)',    // 胭脂红
-    'R': 'rgb(255, 127, 80)',   // 珊瑚色
-    'S': 'rgb(255, 248, 220)',  // 杏仁色（浅黄）
-    'T': 'rgb(176, 224, 230)'   // 粉蓝色
+    'A': '#FFD54F',  // 黄色渐变
+    'B': '#8BC34A',  // 绿色渐变
+    'C': '#FFB74D',  // 橙色渐变
+    'D': '#FF8A80',  // 红色渐变
+    'E': '#81D4FA',  // 蓝色渐变
+    'F': '#CE93D8',  // 紫色渐变
+    'G': '#80CBC4',  // 青色渐变
+    'H': '#FFAB91',  // 珊瑚渐变
+    'I': '#B39DDB',  // 紫罗兰渐变
+    'J': '#90CAF9',  // 浅蓝渐变
+    'K': '#FF8A65',  // 深橙渐变
+    'L': '#4DB6AC',  // 深青渐变
+    'M': '#9575CD',  // 中紫渐变
+    'N': '#FF7043',  // 橙红渐变
+    'O': '#66BB6A',  // 草绿渐变
+    'P': '#42A5F5',  // 天蓝渐变
+    'Q': '#EC407A',  // 粉红渐变
+    'R': '#AB47BC',  // 深紫渐变
+    'S': '#26A69A',  // 碧绿渐变
+    'T': '#5C6BC0'   // 靛蓝渐变
+};
+
+// 渐变配置
+var REGION_GRADIENTS = {
+    'A': ['#FFE082', '#FFD54F'],
+    'B': ['#AED581', '#8BC34A'],
+    'C': ['#FFB74D', '#FFA726'],
+    'D': ['#FF8A80', '#FF5252'],
+    'E': ['#81D4FA', '#4FC3F7'],
+    'F': ['#CE93D8', '#BA68C8'],
+    'G': ['#80CBC4', '#4DB6AC'],
+    'H': ['#FFAB91', '#FF8A65'],
+    'I': ['#B39DDB', '#9575CD'],
+    'J': ['#90CAF9', '#64B5F6'],
+    'K': ['#FF8A65', '#FF7043'],
+    'L': ['#4DB6AC', '#26A69A'],
+    'M': ['#9575CD', '#7E57C2'],
+    'N': ['#FF7043', '#F4511E'],
+    'O': ['#66BB6A', '#4CAF50'],
+    'P': ['#42A5F5', '#2196F3'],
+    'Q': ['#EC407A', '#E91E63'],
+    'R': ['#AB47BC', '#9C27B0'],
+    'S': ['#26A69A', '#00897B'],
+    'T': ['#5C6BC0', '#3F51B5']
 };
 
 // ==================== 音效系统 ====================
@@ -1727,17 +1751,26 @@ GameManager.prototype.renderBoard = function() {
     var level = this.currentLevelData;
     var GRID_SIZE = level.size;
     
+    // 棋盘外框 - 白色圆角容器+阴影
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(this.boardX - 10, this.boardY - 10, GRID_SIZE * this.cellSize + 20, GRID_SIZE * this.cellSize + 20);
+    ctx.shadowColor = 'rgba(100, 100, 120, 0.25)';
+    ctx.shadowBlur = 20;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 8;
+    roundRect(ctx, this.boardX - 15, this.boardY - 15, GRID_SIZE * this.cellSize + 30, GRID_SIZE * this.cellSize + 30, 24);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
     
     for (var r = 0; r < GRID_SIZE; r++) {
         for (var c = 0; c < GRID_SIZE; c++) {
             var x = this.boardX + c * this.cellSize;
             var y = this.boardY + (GRID_SIZE - 1 - r) * this.cellSize;
-            var size = this.cellSize - 6;
+            var size = this.cellSize - 8;
             
             var region = level.regions[r][c];
-            var baseColor = REGION_COLORS[region] || 'rgb(200,200,200)';
+            var baseColor = REGION_COLORS[region] || '#cccccc';
+            var gradientColors = REGION_GRADIENTS[region] || ['#ffffff', '#cccccc'];
             
             var anim = Animations.get('shake_' + r + '_' + c);
             if (anim) {
@@ -1748,24 +1781,30 @@ GameManager.prototype.renderBoard = function() {
             }
             
             ctx.globalAlpha = 1;
-            ctx.shadowColor = 'rgba(100, 100, 120, 0.35)';
-            ctx.shadowBlur = 12;
-            ctx.shadowOffsetX = 3;
-            ctx.shadowOffsetY = 5;
+            // 增强阴影效果
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.15)';
+            ctx.shadowBlur = 8;
+            ctx.shadowOffsetX = 2;
+            ctx.shadowOffsetY = 3;
             
-            ctx.fillStyle = baseColor;
-            roundRect(ctx, x + 3, y + 3, size, size, 16);
+            // 创建渐变填充
+            var cellGradient = ctx.createLinearGradient(x + 4, y + 4, x + 4, y + size + 4);
+            cellGradient.addColorStop(0, gradientColors[0]);
+            cellGradient.addColorStop(1, gradientColors[1]);
+            ctx.fillStyle = cellGradient;
+            roundRect(ctx, x + 4, y + 4, size, size, 14);
             ctx.fill();
             
             ctx.shadowColor = 'transparent';
             ctx.shadowBlur = 0;
             
-            var gradient = ctx.createLinearGradient(x + 3, y + 3, x + 3, y + size / 2);
-            gradient.addColorStop(0, 'rgba(255, 255, 255, 0.7)');
-            gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.2)');
-            gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-            ctx.fillStyle = gradient;
-            roundRect(ctx, x + 3, y + 3, size, size, 16);
+            // 高光效果 - 顶部渐变
+            var highlight = ctx.createLinearGradient(x + 4, y + 4, x + 4, y + size / 2);
+            highlight.addColorStop(0, 'rgba(255, 255, 255, 0.6)');
+            highlight.addColorStop(0.5, 'rgba(255, 255, 255, 0.15)');
+            highlight.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            ctx.fillStyle = highlight;
+            roundRect(ctx, x + 4, y + 4, size, size, 14);
             ctx.fill();
             
             if (anim) ctx.restore();
@@ -1843,43 +1882,63 @@ GameManager.prototype.renderBoard = function() {
 
 GameManager.prototype.renderButtons = function() {
     var ctx = this.ctx;
-    var btnY = 920;
-    var btnH = 64;
-    var btnW = 160;
-    var btnGap = 10;
-    var totalWidth = btnW * 3 + btnGap * 2;
+    var btnY = 900;
+    var btnH = 58;
+    var btnW = 145;
+    var btnGap = 12;
+    var totalWidth = btnW * 4 + btnGap * 3;
     var startX = (GAME_WIDTH - totalWidth) / 2;
     
-    var buttons = [
-        { name: '清空', active: false },
-        { name: '规则', active: false },
-        { name: '提示', active: false, disabled: this.hintsUsed > 0 }
+    // 按钮颜色配置 - 商业化渐变风格
+    var buttonConfigs = [
+        { name: '清空', bgColor: '#f5f5f5', textColor: '#666666', icon: '🗑️' },
+        { name: '规则', bgColor: '#64b5f6', textColor: '#ffffff', icon: '📖' },
+        { name: '提示', bgColor: '#ffb74d', textColor: '#ffffff', icon: '💡' },
+        { name: '下一关', bgColor: '#81c784', textColor: '#ffffff', icon: '➡️' }
     ];
     
-    for (var i = 0; i < 3; i++) {
-        var btn = buttons[i];
+    for (var i = 0; i < 4; i++) {
+        var btn = buttonConfigs[i];
         var x = startX + i * (btnW + btnGap);
         
-        if (btn.disabled) {
-            ctx.fillStyle = '#e0e0e0';
-            roundRect(ctx, x, btnY, btnW, btnH, 32);
-            ctx.fill();
-            ctx.fillStyle = '#aaaaaa';
-            ctx.font = '24px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText(btn.name, x + btnW / 2, btnY + btnH / 2 + 8);
-            continue;
-        }
+        // 按钮阴影
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.15)';
+        ctx.shadowBlur = 6;
+        ctx.shadowOffsetX = 2;
+        ctx.shadowOffsetY = 3;
         
-        ctx.fillStyle = btn.active ? '#667eea' : '#f0f2f5';
-        roundRect(ctx, x, btnY, btnW, btnH, 32);
+        // 创建渐变背景
+        var btnGradient = ctx.createLinearGradient(x, btnY, x, btnY + btnH);
+        btnGradient.addColorStop(0, btn.bgColor);
+        btnGradient.addColorStop(1, this.darkenColor(btn.bgColor));
+        
+        ctx.fillStyle = btnGradient;
+        roundRect(ctx, x, btnY, btnW, btnH, 29);
         ctx.fill();
         
-        ctx.fillStyle = btn.active ? '#ffffff' : '#333333';
-        ctx.font = '24px sans-serif';
+        // 清除阴影
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+        
+        // 绘制按钮图标和文字
+        ctx.fillStyle = btn.textColor;
+        ctx.font = 'bold 20px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(btn.name, x + btnW / 2, btnY + btnH / 2 + 8);
+        ctx.textBaseline = 'middle';
+        ctx.fillText(btn.icon + ' ' + btn.name, x + btnW / 2, btnY + btnH / 2 + 2);
     }
+};
+
+// 颜色加深辅助函数
+GameManager.prototype.darkenColor = function(hexColor) {
+    // 简单的颜色加深逻辑
+    var colorMap = {
+        '#f5f5f5': '#e0e0e0',
+        '#64b5f6': '#42a5f5',
+        '#ffb74d': '#ffa726',
+        '#81c784': '#66bb6a'
+    };
+    return colorMap[hexColor] || hexColor;
 };
 
 GameManager.prototype.renderParticles = function() {
