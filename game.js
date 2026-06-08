@@ -1693,54 +1693,49 @@ GameManager.prototype.renderGame = function() {
     topGradient.addColorStop(0, '#667eea');
     topGradient.addColorStop(1, '#764ba2');
     ctx.fillStyle = topGradient;
-    roundRect(ctx, 30, 30, GAME_WIDTH - 60, 110, 30);
-    ctx.fill();
-    
-    // 顶部区域底部圆角覆盖
-    ctx.fillStyle = '#ffffff';
-    roundRect(ctx, 30, 110, GAME_WIDTH - 60, 30, 0);
+    roundRect(ctx, 30, 30, GAME_WIDTH - 60, 100, 28);
     ctx.fill();
     
     // 设置按钮 - 圆形毛玻璃效果
     ctx.fillStyle = 'rgba(255,255,255,0.3)';
     ctx.beginPath();
-    ctx.arc(70, 75, 26, 0, Math.PI * 2);
+    ctx.arc(70, 70, 24, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#ffffff';
-    ctx.font = '24px sans-serif';
+    ctx.font = '22px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('⚙', 70, 75);
+    ctx.fillText('⚙', 70, 70);
     
     // 游戏名称 - 居中
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 32px sans-serif';
+    ctx.font = 'bold 28px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('🐱 找猫大师', GAME_WIDTH / 2, 60);
+    ctx.fillText('🐱 找猫大师', GAME_WIDTH / 2, 55);
     
     // ========== 信息卡片区域 ==========
     // 关卡信息卡片
     ctx.fillStyle = '#667eea';
     ctx.shadowColor = 'rgba(102, 126, 234, 0.4)';
-    ctx.shadowBlur = 8;
-    ctx.shadowOffsetY = 3;
-    roundRect(ctx, 50, 160, 120, 45, 22);
+    ctx.shadowBlur = 6;
+    ctx.shadowOffsetY = 2;
+    roundRect(ctx, 50, 155, 110, 40, 20);
     ctx.fill();
     ctx.shadowColor = 'transparent';
     ctx.shadowBlur = 0;
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 22px sans-serif';
+    ctx.font = 'bold 18px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('第 ' + (this.currentLevel + 1) + ' 关', 110, 187);
+    ctx.fillText('第 ' + (this.currentLevel + 1) + ' 关', 105, 178);
     
     // 生命值卡片
-    var heartY = 160;
+    var heartY = 155;
     var maxHearts = this.maxMistakes || 2;
-    var heartSize = 30;
-    var heartSpacing = 36;
+    var heartSize = 26;
+    var heartSpacing = 32;
     var totalHeartWidth = (maxHearts - 1) * heartSpacing + heartSize;
-    var startHeartX = 240 - totalHeartWidth / 2;
+    var startHeartX = 220 - totalHeartWidth / 2;
     
     for (var h = 0; h < maxHearts; h++) {
         var heartX = startHeartX + h * heartSpacing;
@@ -1751,34 +1746,34 @@ GameManager.prototype.renderGame = function() {
     // 连胜卡片
     ctx.fillStyle = '#ff9800';
     ctx.shadowColor = 'rgba(255, 152, 0, 0.4)';
-    ctx.shadowBlur = 8;
-    ctx.shadowOffsetY = 3;
-    roundRect(ctx, 430, 160, 120, 45, 22);
+    ctx.shadowBlur = 6;
+    ctx.shadowOffsetY = 2;
+    roundRect(ctx, 380, 155, 100, 40, 20);
     ctx.fill();
     ctx.shadowColor = 'transparent';
     ctx.shadowBlur = 0;
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 22px sans-serif';
+    ctx.font = 'bold 18px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('🔥 ' + this.streak, 490, 187);
+    ctx.fillText('🔥 ' + this.streak, 430, 178);
     
     // ========== 中部规则提示卡片 ==========
     ctx.fillStyle = '#fff9e6';
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.08)';
-    ctx.shadowBlur = 12;
-    ctx.shadowOffsetY = 4;
-    roundRect(ctx, 50, 230, 650, 80, 16);
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.06)';
+    ctx.shadowBlur = 10;
+    ctx.shadowOffsetY = 3;
+    roundRect(ctx, 50, 220, 650, 70, 14);
     ctx.fill();
     ctx.shadowColor = 'transparent';
     ctx.shadowBlur = 0;
     
     ctx.fillStyle = '#f57c00';
-    ctx.font = 'bold 18px sans-serif';
+    ctx.font = 'bold 16px sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText('📜 游戏规则', 70, 255);
+    ctx.fillText('📜 游戏规则', 70, 245);
     
     // 规则三栏
-    var ruleY = 275;
+    var ruleY = 260;
     var rules = [
         { icon: '🐱', text: '每种颜色1只猫' },
         { icon: '📏', text: '每行每列1只' },
@@ -1788,20 +1783,20 @@ GameManager.prototype.renderGame = function() {
     for (var r = 0; r < 3; r++) {
         var ruleX = 80 + r * 210;
         ctx.fillStyle = '#ffffff';
-        roundRect(ctx, ruleX, ruleY, 190, 30, 8);
+        roundRect(ctx, ruleX, ruleY, 180, 26, 6);
         ctx.fill();
         ctx.fillStyle = '#555555';
-        ctx.font = '16px sans-serif';
+        ctx.font = '14px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(rules[r].icon + ' ' + rules[r].text, ruleX + 95, ruleY + 20);
+        ctx.fillText(rules[r].icon + ' ' + rules[r].text, ruleX + 90, ruleY + 17);
     }
     
     // ========== 剩余猫咪信息 ==========
     var remainingCats = GRID_SIZE - (this.foundCats ? this.foundCats.length : 0);
     ctx.fillStyle = '#ff9800';
-    ctx.font = 'bold 20px sans-serif';
+    ctx.font = 'bold 18px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('🐱 剩余猫咪: ' + remainingCats, GAME_WIDTH / 2, 340);
+    ctx.fillText('🐱 剩余猫咪: ' + remainingCats + '/' + GRID_SIZE, GAME_WIDTH / 2, 320);
     
     // ========== 棋盘区域 ==========
     this.renderBoard();
@@ -1953,22 +1948,21 @@ GameManager.prototype.renderBoard = function() {
 
 GameManager.prototype.renderButtons = function() {
     var ctx = this.ctx;
-    var btnY = 900;
-    var btnH = 58;
-    var btnW = 145;
-    var btnGap = 12;
-    var totalWidth = btnW * 4 + btnGap * 3;
+    var btnY = 880;
+    var btnH = 56;
+    var btnW = 160;
+    var btnGap = 16;
+    var totalWidth = btnW * 3 + btnGap * 2;
     var startX = (GAME_WIDTH - totalWidth) / 2;
     
-    // 按钮颜色配置 - 商业化渐变风格
+    // 按钮颜色配置 - 商业化渐变风格（3个按钮）
     var buttonConfigs = [
         { name: '清空', bgColor: '#f5f5f5', textColor: '#666666', icon: '🗑️' },
         { name: '规则', bgColor: '#64b5f6', textColor: '#ffffff', icon: '📖' },
-        { name: '提示', bgColor: '#ffb74d', textColor: '#ffffff', icon: '💡' },
-        { name: '下一关', bgColor: '#81c784', textColor: '#ffffff', icon: '➡️' }
+        { name: '提示', bgColor: '#ffb74d', textColor: '#ffffff', icon: '💡' }
     ];
     
-    for (var i = 0; i < 4; i++) {
+    for (var i = 0; i < 3; i++) {
         var btn = buttonConfigs[i];
         var x = startX + i * (btnW + btnGap);
         
@@ -1984,7 +1978,7 @@ GameManager.prototype.renderButtons = function() {
         btnGradient.addColorStop(1, this.darkenColor(btn.bgColor));
         
         ctx.fillStyle = btnGradient;
-        roundRect(ctx, x, btnY, btnW, btnH, 29);
+        roundRect(ctx, x, btnY, btnW, btnH, 28);
         ctx.fill();
         
         // 清除阴影
@@ -1993,7 +1987,7 @@ GameManager.prototype.renderButtons = function() {
         
         // 绘制按钮图标和文字
         ctx.fillStyle = btn.textColor;
-        ctx.font = 'bold 20px sans-serif';
+        ctx.font = 'bold 22px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(btn.icon + ' ' + btn.name, x + btnW / 2, btnY + btnH / 2 + 2);
@@ -2032,60 +2026,65 @@ GameManager.prototype.renderWinModal = function() {
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
     ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
     
+    // 统一弹窗样式：白色卡片 500x320，圆角24，位置居中
+    var modalW = 500;
+    var modalH = 320;
+    var modalX = (GAME_WIDTH - modalW) / 2;
+    var modalY = 350;
+    
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.2)';
+    ctx.shadowBlur = 20;
+    ctx.shadowOffsetY = 8;
+    roundRect(ctx, modalX, modalY, modalW, modalH, 24);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    
+    ctx.fillStyle = '#333333';
+    ctx.font = 'bold 32px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('🎉 胜利', GAME_WIDTH / 2, modalY + 60);
+    
     if (isLastLevel) {
-        ctx.fillStyle = '#ffffff';
-        roundRect(ctx, 100, 300, 550, 350, 30);
-        ctx.fill();
+        ctx.font = '24px sans-serif';
+        ctx.fillText('用时: ' + this.formatTime(this.finalTime), GAME_WIDTH / 2, modalY + 100);
         
-        ctx.fillStyle = '#333333';
-        ctx.font = 'bold 32px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('🎉 胜利', GAME_WIDTH / 2, 360);
-        
-        ctx.font = '26px sans-serif';
-        ctx.fillText('用时: ' + this.formatTime(this.finalTime), GAME_WIDTH / 2, 410);
-        
-        var modalCenterX = 100 + 275;
-        var btnWidth = 200;
-        var btnGap = 10;
+        var btnWidth = 180;
+        var btnGap = 20;
         var totalBtnWidth = btnWidth * 2 + btnGap;
-        var btnStartX = modalCenterX - totalBtnWidth / 2;
+        var btnStartX = (GAME_WIDTH - totalBtnWidth) / 2;
+        var btnY = modalY + 160;
         
         ctx.fillStyle = '#667eea';
-        roundRect(ctx, btnStartX, 450, btnWidth, 50, 25);
+        roundRect(ctx, btnStartX, btnY, btnWidth, 50, 25);
         ctx.fill();
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 24px sans-serif';
+        ctx.font = 'bold 22px sans-serif';
         ctx.textBaseline = 'middle';
-        ctx.fillText('重新开始', btnStartX + btnWidth / 2, 450 + 25);
+        ctx.fillText('重新开始', btnStartX + btnWidth / 2, btnY + 25);
         
         ctx.fillStyle = '#f0f2f5';
-        roundRect(ctx, btnStartX + btnWidth + btnGap, 450, btnWidth, 50, 25);
+        roundRect(ctx, btnStartX + btnWidth + btnGap, btnY, btnWidth, 50, 25);
         ctx.fill();
         ctx.fillStyle = '#333333';
-        ctx.font = 'bold 24px sans-serif';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('排行榜', btnStartX + btnWidth + btnGap + btnWidth / 2, 450 + 25);
+        ctx.font = 'bold 22px sans-serif';
+        ctx.fillText('排行榜', btnStartX + btnWidth + btnGap + btnWidth / 2, btnY + 25);
     } else {
-        ctx.fillStyle = '#ffffff';
-        roundRect(ctx, 150, 380, 450, 300, 30);
-        ctx.fill();
+        ctx.font = '24px sans-serif';
+        ctx.fillText('连击 +1', GAME_WIDTH / 2, modalY + 100);
         
-        ctx.fillStyle = '#333333';
-        ctx.font = 'bold 36px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('🎉 胜利', GAME_WIDTH / 2, 460);
-        
-        ctx.font = '28px sans-serif';
-        ctx.fillText('连击 +1', GAME_WIDTH / 2, 510);
+        var btnWidth = 180;
+        var btnY = modalY + 160;
+        var btnX = (GAME_WIDTH - btnWidth) / 2;
         
         ctx.fillStyle = '#667eea';
-        roundRect(ctx, 200, 560, 350, 60, 30);
+        roundRect(ctx, btnX, btnY, btnWidth, 50, 25);
         ctx.fill();
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 26px sans-serif';
+        ctx.font = 'bold 22px sans-serif';
         ctx.textBaseline = 'middle';
-        ctx.fillText('下一关', 200 + 175, 560 + 30);
+        ctx.fillText('下一关', btnX + btnWidth / 2, btnY + 25);
     }
 };
 
@@ -2174,25 +2173,34 @@ GameManager.prototype.renderLeaderboard = function() {
 GameManager.prototype.handleWinModalTouch = function(pos) {
     var isLastLevel = this.currentLevel >= 4;
     
+    var modalW = 500;
+    var modalH = 320;
+    var modalX = (GAME_WIDTH - modalW) / 2;
+    var modalY = 350;
+    
     if (isLastLevel) {
-        var modalCenterX = 100 + 275;
-        var btnWidth = 200;
-        var btnGap = 10;
+        var btnWidth = 180;
+        var btnGap = 20;
         var totalBtnWidth = btnWidth * 2 + btnGap;
-        var btnStartX = modalCenterX - totalBtnWidth / 2;
+        var btnStartX = (GAME_WIDTH - totalBtnWidth) / 2;
+        var btnY = modalY + 160;
         
-        if (pos.x >= btnStartX && pos.x <= btnStartX + btnWidth && pos.y >= 450 && pos.y <= 500) {
+        if (pos.x >= btnStartX && pos.x <= btnStartX + btnWidth && pos.y >= btnY && pos.y <= btnY + 50) {
             this.loadLevel(0);
             this.gameStatus = 'playing';
             return;
         }
         
-        if (pos.x >= btnStartX + btnWidth + btnGap && pos.x <= btnStartX + btnWidth + btnGap + btnWidth && pos.y >= 450 && pos.y <= 500) {
+        if (pos.x >= btnStartX + btnWidth + btnGap && pos.x <= btnStartX + btnWidth + btnGap + btnWidth && pos.y >= btnY && pos.y <= btnY + 50) {
             this.showLeaderboard = true;
             return;
         }
     } else {
-        if (pos.x >= 200 && pos.x <= 550 && pos.y >= 560 && pos.y <= 620) {
+        var btnWidth = 180;
+        var btnY = modalY + 160;
+        var btnX = (GAME_WIDTH - btnWidth) / 2;
+        
+        if (pos.x >= btnX && pos.x <= btnX + btnWidth && pos.y >= btnY && pos.y <= btnY + 50) {
             var nextLevel = this.currentLevel + 1;
             if (nextLevel < 5) {
                 this.loadLevel(nextLevel);
