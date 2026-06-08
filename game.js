@@ -1288,10 +1288,10 @@ GameManager.prototype.handleTouch = function(type, pos) {
     }
     
     if (this.scene === 'game') {
-        var btnY = 920;
-        var btnH = 64;
+        var btnY = 880;
+        var btnH = 56;
         var btnW = 160;
-        var btnGap = 10;
+        var btnGap = 16;
         var totalWidth = btnW * 3 + btnGap * 2;
         var startX = (GAME_WIDTH - totalWidth) / 2;
         
@@ -1306,9 +1306,41 @@ GameManager.prototype.handleTouch = function(type, pos) {
         
         if (pos.x >= 20 && pos.x <= 90 && pos.y >= 145 && pos.y <= 185) clickedButton = true;
         
-        if ((this.gameStatus === 'win' || this.gameStatus === 'fail') && 
-            pos.x >= 200 && pos.x <= 550 && pos.y >= 560 && pos.y <= 620) {
-            clickedButton = true;
+        if (this.gameStatus === 'fail') {
+            var modalW = 500;
+            var modalY = 350;
+            var btnWidth = 180;
+            var btnX = (GAME_WIDTH - btnWidth) / 2;
+            var btnRetryY = modalY + 160;
+            if (pos.x >= btnX && pos.x <= btnX + btnWidth && pos.y >= btnRetryY && pos.y <= btnRetryY + 50) {
+                clickedButton = true;
+            }
+        }
+        
+        if (this.gameStatus === 'win') {
+            var modalW = 500;
+            var modalY = 350;
+            var isLastLevel = this.currentLevel >= 4;
+            
+            if (isLastLevel) {
+                var btnWidth = 180;
+                var btnGap = 20;
+                var totalBtnWidth = btnWidth * 2 + btnGap;
+                var btnStartX = (GAME_WIDTH - totalBtnWidth) / 2;
+                var btnY = modalY + 160;
+                
+                if ((pos.x >= btnStartX && pos.x <= btnStartX + btnWidth && pos.y >= btnY && pos.y <= btnY + 50) ||
+                    (pos.x >= btnStartX + btnWidth + btnGap && pos.x <= btnStartX + btnWidth + btnGap + btnWidth && pos.y >= btnY && pos.y <= btnY + 50)) {
+                    clickedButton = true;
+                }
+            } else {
+                var btnWidth = 180;
+                var btnY = modalY + 160;
+                var btnX = (GAME_WIDTH - btnWidth) / 2;
+                if (pos.x >= btnX && pos.x <= btnX + btnWidth && pos.y >= btnY && pos.y <= btnY + 50) {
+                    clickedButton = true;
+                }
+            }
         }
         
         if (type === 'start') {
@@ -1456,10 +1488,10 @@ GameManager.prototype.addAnimation = function(type, row, col, duration) {
 };
 
 GameManager.prototype.handleButtonTouch = function(pos) {
-    var btnY = 920;
-    var btnH = 64;
+    var btnY = 880;
+    var btnH = 56;
     var btnW = 160;
-    var btnGap = 10;
+    var btnGap = 16;
     var totalWidth = btnW * 3 + btnGap * 2;
     var startX = (GAME_WIDTH - totalWidth) / 2;
     
@@ -1478,8 +1510,18 @@ GameManager.prototype.handleButtonTouch = function(pos) {
         return;
     }
     
-    if (this.gameStatus === 'fail' && pos.x >= 200 && pos.x <= 550 && pos.y >= 560 && pos.y <= 620) {
-        this.loadLevel(this.currentLevel);
+    if (this.gameStatus === 'fail') {
+        var modalW = 500;
+        var modalX = (GAME_WIDTH - modalW) / 2;
+        var modalY = 350;
+        var btnWidth = 180;
+        var btnX = (GAME_WIDTH - btnWidth) / 2;
+        var btnRetryY = modalY + 160;
+        
+        if (pos.x >= btnX && pos.x <= btnX + btnWidth && pos.y >= btnRetryY && pos.y <= btnRetryY + 50) {
+            this.loadLevel(this.currentLevel);
+            return;
+        }
     }
 };
 
