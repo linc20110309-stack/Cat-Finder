@@ -1,0 +1,30 @@
+# 微信开发者工具
+*.wxss
+*.wxml
+*.js
+!app.js
+!game.js
+!utils/*.js
+!data/*.js
+!components/**/*.js
+!components/**/*.json
+
+# Node modules
+node_modules/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.bak
