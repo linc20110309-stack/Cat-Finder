@@ -885,6 +885,37 @@ function GameManager() {
     this.showLeaderboard = false;
     this.finalTime = 0;
     this.currentLevelData = null;
+    this.colorblindMode = false;
+    this.showCoords = false;
+    
+    // ========== 新增交互动效变量 ==========
+    // 按钮按压动画
+    this.pressedBtn = -1; // 被按压的按钮索引 (-1表示无)
+    this.btnAnimProgress = 0; // 按钮动画进度 (0-1)
+    
+    // 屏幕闪烁（错误反馈）
+    this.screenFlash = false;
+    this.screenFlashStart = 0;
+    this.screenFlashDuration = 80;
+    
+    // 猫找到时的金色粒子
+    this.catParticles = [];
+    
+    // 连胜火焰粒子
+    this.streakParticles = [];
+    this.lastStreakParticleTime = 0;
+    
+    // 页面切换淡入淡出
+    this.sceneTransition = false;
+    this.sceneTransitionAlpha = 0;
+    this.sceneTransitionTarget = null;
+    this.sceneTransitionCallback = null;
+    
+    // 心跳动画
+    this.heartbeatPhase = 0;
+    
+    // 弹窗背景蒙层透明度
+    this.modalBgAlpha = 0;
 }
 
 GameManager.prototype.init = function() {
@@ -1245,154 +1276,182 @@ GameManager.prototype.findInArray = function(arr, row, col) {
     return -1;
 };
 
+// ========== 触摸事件处理（与新布局对齐） ==========
 GameManager.prototype.handleTouch = function(type, pos) {
     if (this._lastTouchTime && Date.now() - this._lastTouchTime < 50) return;
     this._lastTouchTime = Date.now();
     
-    // 设置按钮（左上角圆形按钮）检测
-    var settingsBtnX = 70;
-    var settingsBtnY = 75;
-    var settingsBtnR = 24;
-    var distToSettings = Math.sqrt(Math.pow(pos.x - settingsBtnX, 2) + Math.pow(pos.y - settingsBtnY, 2));
+    var marginX = 30;
+    var safeTopY = 60;
+    var navY = safeTopY;
+    var navH = 110;
     
-    if (distToSettings <= settingsBtnR) {
-        if (type === 'start' && (this.scene === 'game' || this.scene === 'home')) {
+    // ========== 顶部导航栏按钮检测 ==========
+    // 左上角圆形按钮
+    var backBtnX = marginX + 35;
+    var backBtnY = navY + navH / 2;
+    var backBtnR = 28;
+    var distToBack = Math.sqrt(Math.pow(pos.x - backBtnX, 2) + Math.pow(pos.y - backBtnY, 2));
+    
+    if (distToBack <= backBtnR) {
+        if (type === 'start') {
+            // 左上角：打开设置
+            this.settingsSource = this.scene;
             this.showSettings = true;
         }
         return;
     }
     
-    if (this.showSettings && pos.x >= 530 && pos.x <= 570 && pos.y >= 130 && pos.y <= 170) {
-        if (type === 'start') this.showSettings = false;
+    // 右上角圆形按钮
+    var settingsBtnX = GAME_WIDTH - marginX - 35;
+    var distToSettings = Math.sqrt(Math.pow(pos.x - settingsBtnX, 2) + Math.pow(pos.y - backBtnY, 2));
+    
+    if (distToSettings <= backBtnR) {
+        if (type === 'start' && this.scene === 'game') {
+            // 右上角：返回首页
+            this.scene = 'home';
+        }
         return;
     }
     
-    if (this.showRules && pos.x >= 580 && pos.x <= 630 && pos.y >= 170 && pos.y <= 210) {
-        if (type === 'start') this.showRules = false;
-        return;
-    }
-    
-    if (this.showLeaderboard) {
-        if (type === 'start') this.handleLeaderboardTouch(pos);
-        return;
-    }
-    
-    if (this.gameStatus === 'win' && type === 'start') {
-        this.handleWinModalTouch(pos);
-        return;
-    }
-    
+    // ========== 设置面板 ==========
     if (this.showSettings) {
         if (type === 'start') this.handleSettingsTouch(pos);
         return;
     }
     
-    if (this.scene === 'game') {
-        var btnY = 880;
+    // ========== 排行榜 ==========
+    if (this.showLeaderboard) {
+        if (type === 'start') this.handleLeaderboardTouch(pos);
+        return;
+    }
+    
+    // ========== 规则面板 ==========
+    if (this.showRules) {
+        if (type === 'start') this.handleRulesTouch(pos);
+        return;
+    }
+    
+    // ========== 弹窗 ==========
+    if (this.gameStatus === 'win' && type === 'start') {
+        this.handleWinModalTouch(pos);
+        return;
+    }
+    
+    if (this.gameStatus === 'fail' && type === 'start') {
+        this.handleFailModalTouch(pos);
+        return;
+    }
+    
+    // ========== 游戏场景 ==========
+    if (this.scene === 'game' && this.gameStatus === 'playing') {
+        // 底部按钮检测（四个按钮）
         var btnH = 56;
-        var btnW = 160;
-        var btnGap = 16;
-        var totalWidth = btnW * 3 + btnGap * 2;
-        var startX = (GAME_WIDTH - totalWidth) / 2;
+        var btnW = (GAME_WIDTH - 30 * 2 - 36) / 4;
+        var btnGap = 12;
+        var startX = 30;
+        var btnY = this._btnAreaY || 900;
         
-        var clickedButton = false;
-        for (var i = 0; i < 3; i++) {
-            var x = startX + i * (btnW + btnGap);
-            if (pos.x >= x && pos.x <= x + btnW && pos.y >= btnY && pos.y <= btnY + btnH) {
-                clickedButton = true;
-                break;
+        // 检测按压状态
+        if (type === 'start' || type === 'move') {
+            for (var bi = 0; bi < 4; bi++) {
+                var bx = startX + bi * (btnW + btnGap);
+                if (pos.x >= bx && pos.x <= bx + btnW && pos.y >= btnY && pos.y <= btnY + btnH) {
+                    this._pressedButton = bi;
+                    break;
+                } else {
+                    this._pressedButton = null;
+                }
             }
         }
-        
-        if (pos.x >= 20 && pos.x <= 90 && pos.y >= 145 && pos.y <= 185) clickedButton = true;
-        
-        if (this.gameStatus === 'fail') {
-            var modalW = 500;
-            var modalY = 350;
-            var btnWidth = 180;
-            var btnX = (GAME_WIDTH - btnWidth) / 2;
-            var btnRetryY = modalY + 160;
-            if (pos.x >= btnX && pos.x <= btnX + btnWidth && pos.y >= btnRetryY && pos.y <= btnRetryY + 50) {
-                clickedButton = true;
-            }
-        }
-        
-        if (this.gameStatus === 'win') {
-            var modalW = 500;
-            var modalY = 350;
-            var isLastLevel = this.currentLevel >= 4;
+        if (type === 'end') {
+            var pressedBtn = this._pressedButton;
+            this._pressedButton = null;
             
-            if (isLastLevel) {
-                var btnWidth = 180;
-                var btnGap = 20;
-                var totalBtnWidth = btnWidth * 2 + btnGap;
-                var btnStartX = (GAME_WIDTH - totalBtnWidth) / 2;
-                var btnY = modalY + 160;
-                
-                if ((pos.x >= btnStartX && pos.x <= btnStartX + btnWidth && pos.y >= btnY && pos.y <= btnY + 50) ||
-                    (pos.x >= btnStartX + btnWidth + btnGap && pos.x <= btnStartX + btnWidth + btnGap + btnWidth && pos.y >= btnY && pos.y <= btnY + 50)) {
-                    clickedButton = true;
-                }
-            } else {
-                var btnWidth = 180;
-                var btnY = modalY + 160;
-                var btnX = (GAME_WIDTH - btnWidth) / 2;
-                if (pos.x >= btnX && pos.x <= btnX + btnWidth && pos.y >= btnY && pos.y <= btnY + 50) {
-                    clickedButton = true;
+            if (pressedBtn !== null && pressedBtn !== undefined) {
+                var bx = startX + pressedBtn * (btnW + btnGap);
+                if (pos.x >= bx && pos.x <= bx + btnW && pos.y >= btnY && pos.y <= btnY + btnH) {
+                    this.handleButtonClick(['clearMarks', 'colorblind', 'coords', 'hint'][pressedBtn]);
+                    return;
                 }
             }
         }
         
+        // 棋盘触摸检测
         if (type === 'start') {
-            if (clickedButton) {
-                this.touchStartCell = null;
-                this._pendingButtonClick = true;
-            } else {
-                var GRID_SIZE = this.currentLevelData.size;
-                var col = Math.floor((pos.x - this.boardX) / this.cellSize);
-                var row = Math.floor((this.boardY + GRID_SIZE * this.cellSize - pos.y) / this.cellSize);
-                
-                if (col >= 0 && col < GRID_SIZE && row >= 0 && row < GRID_SIZE) {
-                    this.touchStartCell = { row: row, col: col };
-                    this.touchStartTime = Date.now();
+            var GRID_SIZE = this.currentLevelData ? this.currentLevelData.size : 4;
+            var boardX = this._boardX || 90;
+            var boardY = this._boardY || 400;
+            var cellSize = this._cellSize || 80;
+            
+            var col = Math.floor((pos.x - boardX) / cellSize);
+            var row = Math.floor((pos.y - boardY) / cellSize);
+            
+            if (col >= 0 && col < GRID_SIZE && row >= 0 && row < GRID_SIZE) {
+                this.touchStartCell = { row: row, col: col };
+                this.touchStartTime = Date.now();
+            }
+        } else if (type === 'end' && this.touchStartCell) {
+            var duration = Date.now() - this.touchStartTime;
+            var row = this.touchStartCell.row;
+            var col = this.touchStartCell.col;
+            
+            var now = Date.now();
+            var isDoubleClick = this.lastTapCell && 
+                this.lastTapCell.row === row && 
+                this.lastTapCell.col === col && 
+                now - this.lastTapTime < 300;
+            
+            this.lastTapTime = now;
+            this.lastTapCell = { row: row, col: col };
+            
+            if (this.gameStatus === 'playing') {
+                if (duration > 300) {
+                    this.toggleMark(row, col);
+                } else if (isDoubleClick) {
+                    this.handleCatDoubleClick(row, col);
+                } else {
+                    this.handleCellClick(row, col);
                 }
             }
-        } else {
-            if (clickedButton) {
-                this.handleButtonTouch(pos);
-                this._pendingButtonClick = false;
-            } else if (this.touchStartCell) {
-                var duration = Date.now() - this.touchStartTime;
-                var row = this.touchStartCell.row;
-                var col = this.touchStartCell.col;
-                
-                var now = Date.now();
-                var isDoubleClick = this.lastTapCell && 
-                    this.lastTapCell.row === row && 
-                    this.lastTapCell.col === col && 
-                    now - this.lastTapTime < 300;
-                
-                this.lastTapTime = now;
-                this.lastTapCell = { row: row, col: col };
-                
-                if (this.gameStatus === 'playing') {
-                    if (duration > 300) {
-                        this.toggleMark(row, col);
-                    } else if (isDoubleClick) {
-                        this.handleCatDoubleClick(row, col);
-                    } else {
-                        this.handleCellClick(row, col);
-                    }
-                }
-                
-                this.touchStartCell = null;
-            }
+            
+            this.touchStartCell = null;
         }
         return;
     }
     
+    // ========== 首页场景 ==========
     if (this.scene === 'home' && type === 'start') {
         this.handleHomeTouch(pos);
+    }
+};
+
+// ========== 规则面板触摸处理 ==========
+GameManager.prototype.handleRulesTouch = function(pos) {
+    // 点击右上角关闭
+    if (pos.x >= 580 && pos.x <= 630 && pos.y >= 155 && pos.y <= 195) {
+        this.showRules = false;
+        return;
+    }
+    
+    // 点击背景关闭
+    if (pos.x < 100 || pos.x > 650 || pos.y < 150 || pos.y > 900) {
+        this.showRules = false;
+    }
+};
+
+// ========== 失败弹窗触摸处理 ==========
+GameManager.prototype.handleFailModalTouch = function(pos) {
+    var modalW = 420;
+    var modalH = 340;
+    var modalY = (GAME_HEIGHT - modalH) / 2 - 20;
+    var btnWidth = 200;
+    var btnH = 56;
+    var btnX = (GAME_WIDTH - btnWidth) / 2;
+    var btnRetryY = modalY + 220;
+    
+    if (pos.x >= btnX && pos.x <= btnX + btnWidth && pos.y >= btnRetryY && pos.y <= btnRetryY + btnH) {
+        this.loadLevel(this.currentLevel);
     }
 };
 
@@ -1430,6 +1489,10 @@ GameManager.prototype.handleCatDoubleClick = function(row, col) {
     if (catIdx !== -1) {
         this.foundCats.push([row, col]);
         AudioManager.play('correct');
+        
+        // ========== 找到猫：金色粒子爆炸 ==========
+        this.spawnCatParticles(row, col);
+        
         this.checkWin();
     } else {
         AudioManager.play('error');
@@ -1437,12 +1500,74 @@ GameManager.prototype.handleCatDoubleClick = function(row, col) {
         this.addAnimation('shake', row, col, 300);
         this.mistakesLeft--;
         
+        // ========== 错误点击：屏幕闪烁红色 ==========
+        this.screenFlash = true;
+        this.screenFlashStart = Date.now();
+        
         if (this.mistakesLeft <= 0) {
             this.gameStatus = 'fail';
             this.streak = 0;
             SaveSystem.setStreak(0);
             AudioManager.play('fail');
         }
+    }
+};
+
+// ========== 金色粒子爆炸效果 ==========
+GameManager.prototype.spawnCatParticles = function(row, col) {
+    var GRID_SIZE = this.currentLevelData.size;
+    var x = this.boardX + col * this.cellSize + this.cellSize / 2;
+    var y = this.boardY + (GRID_SIZE - 1 - row) * this.cellSize + this.cellSize / 2;
+    
+    for (var i = 0; i < 20; i++) {
+        var angle = (Math.PI * 2 / 20) * i + Math.random() * 0.5;
+        var speed = 2 + Math.random() * 3;
+        this.catParticles.push({
+            x: x,
+            y: y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            size: 3 + Math.random() * 5,
+            color: Math.random() > 0.3 ? '#FFD700' : '#FFF8DC', // 金色或浅金色
+            alpha: 1,
+            life: 1
+        });
+    }
+};
+
+// ========== 更新猫找到时的金色粒子 ==========
+GameManager.prototype.updateCatParticles = function() {
+    for (var i = this.catParticles.length - 1; i >= 0; i--) {
+        var p = this.catParticles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.1; // 重力
+        p.alpha -= 0.03;
+        p.life -= 0.03;
+        p.size *= 0.97;
+        
+        if (p.alpha <= 0 || p.life <= 0) {
+            this.catParticles.splice(i, 1);
+        }
+    }
+};
+
+// ========== 渲染猫找到时的金色粒子 ==========
+GameManager.prototype.renderCatParticles = function(ctx) {
+    for (var i = 0; i < this.catParticles.length; i++) {
+        var p = this.catParticles[i];
+        ctx.save();
+        ctx.globalAlpha = p.alpha;
+        
+        // 绘制金色粒子（带发光效果）
+        ctx.shadowColor = '#FFD700';
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.restore();
     }
 };
 
@@ -1488,16 +1613,17 @@ GameManager.prototype.addAnimation = function(type, row, col, duration) {
 };
 
 GameManager.prototype.handleButtonTouch = function(pos) {
-    var btnY = 880;
-    var btnH = 56;
-    var btnW = 160;
-    var btnGap = 16;
-    var totalWidth = btnW * 3 + btnGap * 2;
+    // 底部按钮区域 - 四个按钮
+    var btnY = 870;
+    var btnH = 54;
+    var btnW = 155;
+    var btnGap = 12;
+    var totalWidth = btnW * 4 + btnGap * 3;
     var startX = (GAME_WIDTH - totalWidth) / 2;
     
-    var buttons = ['clearMarks', 'coords', 'hint'];
+    var buttons = ['clearMarks', 'colorblind', 'coords', 'hint'];
     
-    for (var i = 0; i < 3; i++) {
+    for (var i = 0; i < 4; i++) {
         var x = startX + i * (btnW + btnGap);
         if (pos.x >= x && pos.x <= x + btnW && pos.y >= btnY && pos.y <= btnY + btnH) {
             this.handleButtonClick(buttons[i]);
@@ -1505,20 +1631,24 @@ GameManager.prototype.handleButtonTouch = function(pos) {
         }
     }
     
+    // 返回按钮
     if (pos.x >= 20 && pos.x <= 90 && pos.y >= 145 && pos.y <= 185) {
         this.scene = 'home';
         return;
     }
     
+    // 失败弹窗重试按钮
     if (this.gameStatus === 'fail') {
-        var modalW = 500;
+        var modalW = 420;
+        var modalH = 340;
         var modalX = (GAME_WIDTH - modalW) / 2;
-        var modalY = 350;
-        var btnWidth = 180;
+        var modalY = (GAME_HEIGHT - modalH) / 2 - 20;
+        var btnWidth = 200;
+        var btnH = 56;
         var btnX = (GAME_WIDTH - btnWidth) / 2;
-        var btnRetryY = modalY + 160;
+        var btnRetryY = modalY + 220;
         
-        if (pos.x >= btnX && pos.x <= btnX + btnWidth && pos.y >= btnRetryY && pos.y <= btnRetryY + 50) {
+        if (pos.x >= btnX && pos.x <= btnX + btnWidth && pos.y >= btnRetryY && pos.y <= btnRetryY + btnH) {
             this.loadLevel(this.currentLevel);
             return;
         }
@@ -1532,8 +1662,11 @@ GameManager.prototype.handleButtonClick = function(btn) {
         case 'clearMarks':
             this.marks = [];
             break;
+        case 'colorblind':
+            this.colorblindMode = !this.colorblindMode;
+            break;
         case 'coords':
-            this.showRules = !this.showRules;
+            this.showCoords = !this.showCoords;
             break;
         case 'hint':
             if (this.hintsUsed < 1) {
@@ -1611,7 +1744,16 @@ GameManager.prototype.render = function() {
     var ctx = this.ctx;
     if (!ctx) return;
     
-    ctx.fillStyle = '#eeeeee';
+    // ========== 更新所有特效 ==========
+    this.updateCatParticles();
+    this.updateScreenFlash();
+    this.updateSceneTransition();
+    
+    // 浅色渐变背景 (#F0F2F5 → #E8ECF1)
+    var bgGradient = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
+    bgGradient.addColorStop(0, '#F0F2F5');
+    bgGradient.addColorStop(1, '#E8ECF1');
+    ctx.fillStyle = bgGradient;
     ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
     
     if (this.scene === 'home') {
@@ -1624,235 +1766,791 @@ GameManager.prototype.render = function() {
     if (this.showRules) this.renderRules();
     if (this.showLeaderboard) this.renderLeaderboard();
     
+    // ========== 渲染金色粒子 ==========
+    if (this.catParticles.length > 0) {
+        this.renderCatParticles(ctx);
+    }
+    
+    // ========== 屏幕闪烁效果 ==========
+    if (this.screenFlash) {
+        this.renderScreenFlash(ctx);
+    }
+    
+    // ========== 页面切换淡入淡出 ==========
+    if (this.sceneTransition && this.sceneTransitionAlpha > 0) {
+        ctx.fillStyle = 'rgba(255,255,255,' + this.sceneTransitionAlpha + ')';
+        ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    }
+    
     Animations.update();
     this.updateParticles();
+    
+    // 更新弹窗动画进度
+    if (this.gameStatus === 'win' || this.gameStatus === 'fail') {
+        if (!this.modalStartTime) {
+            this.modalStartTime = Date.now();
+        }
+        this.modalAnimProgress = Math.min(1, (Date.now() - this.modalStartTime) / 400);
+        // 弹性缓动函数 (elastic ease out)
+        var t = this.modalAnimProgress;
+        this.modalScale = 1 - Math.pow(2, -10 * t) * Math.cos(t * Math.PI * 2.5) * (1 - t);
+        if (this.modalAnimProgress >= 1) {
+            this.modalScale = 1;
+        }
+    } else {
+        this.modalStartTime = null;
+        this.modalAnimProgress = 0;
+        this.modalScale = 0.7;
+    }
 };
 
-GameManager.prototype.renderHome = function() {
-    var ctx = this.ctx;
-    
-    ctx.fillStyle = '#ffffff';
-    roundRect(ctx, 30, 30, GAME_WIDTH - 60, GAME_HEIGHT - 60, 40);
-    ctx.fill();
-    
-    var gradient = ctx.createLinearGradient(30, 30, GAME_WIDTH - 30, 120);
-    gradient.addColorStop(0, '#667eea');
-    gradient.addColorStop(1, '#764ba2');
-    ctx.fillStyle = gradient;
-    roundRect(ctx, 30, 30, GAME_WIDTH - 60, 90, 30);
-    ctx.fill();
-    
-    // 标题居中显示（垂直居中于顶部栏 y=30-120，中心 y=75）
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 36px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('猫咪归位', GAME_WIDTH / 2, 75);
-    
-    // 设置按钮（左上角圆形按钮，垂直居中）
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.beginPath();
-    ctx.arc(70, 75, 24, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '26px sans-serif';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('⚙', 70, 75);
-    
-    ctx.fillStyle = '#333333';
-    ctx.font = 'bold 32px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('选择关卡', GAME_WIDTH / 2, 180);
-    
-    var startY = 230;
-    var cardW = 180;
-    var cardH = 130;
-    var gap = 15;
-    var cols = 3;
-    var startX = (GAME_WIDTH - (cardW * cols + gap * (cols - 1))) / 2;
-    
-    var unlockedLevel = SaveSystem.getUnlockedLevel();
-    var levelSizes = [4, 5, 6, 7, 8];
-    
-    for (var i = 0; i < 5; i++) {
-        var col = i % cols;
-        var row = Math.floor(i / cols);
-        var x = startX + col * (cardW + gap);
-        var y = startY + row * (cardH + gap);
-        
-        var isUnlocked = i <= unlockedLevel;
-        
-        ctx.fillStyle = isUnlocked ? '#f0f8ff' : '#e8e8e8';
-        roundRect(ctx, x, y, cardW, cardH, 16);
-        ctx.fill();
-        ctx.strokeStyle = isUnlocked ? '#667eea' : '#cccccc';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        
-        ctx.fillStyle = isUnlocked ? '#333333' : '#999999';
-        ctx.font = 'bold 28px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('第' + (i + 1) + '关', x + cardW / 2, y + 35);
-        
-        ctx.font = '22px sans-serif';
-        ctx.fillText(levelSizes[i] + 'x' + levelSizes[i], x + cardW / 2, y + 65);
-        
-        if (isUnlocked) {
-            ctx.fillStyle = 'rgba(102, 126, 234, 0.8)';
-            ctx.font = '28px sans-serif';
-            ctx.fillText('🔓', x + cardW / 2, y + 100);
-        } else {
-            ctx.fillStyle = 'rgba(0,0,0,0.3)';
-            ctx.font = '28px sans-serif';
-            ctx.fillText('🔒', x + cardW / 2, y + 100);
+// ========== 更新屏幕闪烁 ==========
+GameManager.prototype.updateScreenFlash = function() {
+    if (this.screenFlash) {
+        var elapsed = Date.now() - this.screenFlashStart;
+        if (elapsed >= this.screenFlashDuration) {
+            this.screenFlash = false;
         }
     }
 };
 
+// ========== 渲染屏幕闪烁 ==========
+GameManager.prototype.renderScreenFlash = function(ctx) {
+    var elapsed = Date.now() - this.screenFlashStart;
+    var progress = elapsed / this.screenFlashDuration;
+    var alpha = 0.4 * (1 - progress); // 从0.4淡出到0
+    
+    ctx.fillStyle = 'rgba(255, 0, 0, ' + alpha + ')';
+    ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+};
+
+// ========== 页面切换淡入淡出 ==========
+GameManager.prototype.transitionToScene = function(targetScene, callback) {
+    this.sceneTransition = true;
+    this.sceneTransitionTarget = targetScene;
+    this.sceneTransitionCallback = callback;
+    this.sceneTransitionPhase = 'fadeOut'; // 先淡出
+    this.sceneTransitionStart = Date.now();
+    this.sceneTransitionDuration = 200; // 200ms
+};
+
+// ========== 更新页面切换 ==========
+GameManager.prototype.updateSceneTransition = function() {
+    if (!this.sceneTransition) return;
+    
+    var elapsed = Date.now() - this.sceneTransitionStart;
+    var progress = Math.min(1, elapsed / this.sceneTransitionDuration);
+    
+    if (this.sceneTransitionPhase === 'fadeOut') {
+        // 淡出阶段：0 -> 1
+        this.sceneTransitionAlpha = progress;
+        if (progress >= 1) {
+            // 切换场景
+            this.scene = this.sceneTransitionTarget;
+            if (this.scene === 'game') {
+                this.loadLevel(this.currentLevel);
+            }
+            // 开始淡入
+            this.sceneTransitionPhase = 'fadeIn';
+            this.sceneTransitionStart = Date.now();
+            this.sceneTransitionAlpha = 1;
+        }
+    } else if (this.sceneTransitionPhase === 'fadeIn') {
+        // 淡入阶段：1 -> 0
+        this.sceneTransitionAlpha = 1 - progress;
+        if (progress >= 1) {
+            // 完成切换
+            this.sceneTransition = false;
+            this.sceneTransitionAlpha = 0;
+            if (this.sceneTransitionCallback) {
+                this.sceneTransitionCallback();
+            }
+        }
+    }
+};
+
+// ========== 首页商业化改造 ==========
+// ========== 首页渲染 ==========
+GameManager.prototype.renderHome = function() {
+    var ctx = this.ctx;
+    
+    // 全屏渐变背景
+    var bgGradient = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
+    bgGradient.addColorStop(0, '#1a1a2e');
+    bgGradient.addColorStop(0.5, '#16213e');
+    bgGradient.addColorStop(1, '#0f3460');
+    ctx.fillStyle = bgGradient;
+    ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    
+    // 动态粒子
+    this.renderHomeParticles(ctx);
+    
+    var topY = 80;
+    
+    // Logo
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 52px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🐱', GAME_WIDTH / 2 - 80, topY);
+    ctx.fillText('找猫大师', GAME_WIDTH / 2 + 50, topY);
+    
+    // 统计卡片
+    var statsY = topY + 100;
+    var cardW = (GAME_WIDTH - 100) / 3;
+    var stats = [
+        { icon: '⭐', label: '已通关', value: SaveSystem.getUnlockedLevel() + 1 },
+        { icon: '🔥', label: '连胜', value: this.streak },
+        { icon: '🏆', label: '最佳', value: '-' }
+    ];
+    
+    for (var i = 0; i < 3; i++) {
+        var cx = 50 + i * (cardW + 25);
+        ctx.fillStyle = 'rgba(255,255,255,0.1)';
+        roundRect(ctx, cx, statsY, cardW, 100, 20);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '28px sans-serif';
+        ctx.fillText(stats[i].icon, cx + cardW / 2, statsY + 30);
+        ctx.font = 'bold 28px sans-serif';
+        ctx.fillText(stats[i].value, cx + cardW / 2, statsY + 65);
+        ctx.font = '12px sans-serif';
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.fillText(stats[i].label, cx + cardW / 2, statsY + 88);
+    }
+    
+    // 关卡选择
+    var levelY = statsY + 130;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 28px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('选择关卡', 50, levelY);
+    
+    var unlockedLevel = SaveSystem.getUnlockedLevel();
+    var levelSizes = [4, 5, 6, 7, 8];
+    var levelColors = ['#7F5AF0', '#2CB67D', '#FF4D4D', '#FF9500', '#00D4AA'];
+    
+    var levelCardW = 160;
+    var levelCardH = 140;
+    var levelGap = 20;
+    var levelCols = 2;
+    var levelStartX = (GAME_WIDTH - (levelCardW * levelCols + levelGap)) / 2;
+    
+    for (var i = 0; i < 5; i++) {
+        var col = i % levelCols;
+        var row = Math.floor(i / levelCols);
+        var x = levelStartX + col * (levelCardW + levelGap);
+        var y = levelY + 40 + row * (levelCardH + levelGap);
+        var isUnlocked = i <= unlockedLevel;
+        
+        var grad = ctx.createLinearGradient(x, y, x, y + levelCardH);
+        grad.addColorStop(0, levelColors[i]);
+        grad.addColorStop(1, this.darkenColor(levelColors[i]));
+        
+        ctx.shadowColor = levelColors[i];
+        ctx.shadowBlur = 15;
+        ctx.fillStyle = grad;
+        roundRect(ctx, x, y, levelCardW, levelCardH, 20);
+        ctx.fill();
+        ctx.shadowColor = 'transparent';
+        
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        roundRect(ctx, x + 4, y + 4, levelCardW - 8, levelCardH / 2 - 4, 16);
+        ctx.fill();
+        
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 32px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('第' + (i + 1) + '关', x + levelCardW / 2, y + 45);
+        ctx.font = '16px sans-serif';
+        ctx.fillText(levelSizes[i] + '×' + levelSizes[i], x + levelCardW / 2, y + 75);
+        ctx.font = '24px sans-serif';
+        ctx.fillText(isUnlocked ? '▶' : '🔒', x + levelCardW / 2, y + 110);
+    }
+    
+    // 左上角设置按钮
+    var settingsBtnX = 60;
+    var settingsBtnY = topY + 40;
+    
+    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.beginPath();
+    ctx.arc(settingsBtnX, settingsBtnY, 28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '22px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('⚙️', settingsBtnX, settingsBtnY);
+    
+    // 右下角排行榜按钮
+    var leaderboardBtnX = GAME_WIDTH - 60;
+    var leaderboardBtnY = GAME_HEIGHT - 120;
+    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.beginPath();
+    ctx.arc(leaderboardBtnX, leaderboardBtnY, 28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#FFD700';
+    ctx.font = '22px sans-serif';
+    ctx.fillText('🏆', leaderboardBtnX, leaderboardBtnY);
+};
+
+GameManager.prototype.renderHomeParticles = function(ctx) {
+    var time = Date.now() / 1000;
+    for (var i = 0; i < 12; i++) {
+        var x = (Math.sin(time * 0.4 + i * 1.3) * 0.5 + 0.5) * GAME_WIDTH;
+        var y = (Math.cos(time * 0.3 + i * 1.7) * 0.5 + 0.5) * GAME_HEIGHT;
+        var size = 2 + Math.sin(time + i) * 1.5;
+        var alpha = 0.2 + Math.sin(time * 2 + i) * 0.15;
+        ctx.fillStyle = 'rgba(127, 90, 240, ' + alpha + ')';
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+};
+
+// ========== 现代化游戏界面渲染 ==========
+
+// 绘制带双层阴影的主卡片
+function drawDoubleShadowCard(ctx, x, y, w, h, r) {
+    ctx.shadowColor = 'rgba(102, 126, 234, 0.12)';
+    ctx.shadowBlur = 30;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 8;
+    ctx.fillStyle = '#ffffff';
+    roundRect(ctx, x, y, w, h, r);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+}
+
+// 绘制3D心形（带高光和阴影）
+function draw3DHeart(ctx, x, y, size, isActive) {
+    ctx.save();
+    var mainColor = isActive ? '#FF6B8A' : '#E0E0E0';
+    var shadowColor = isActive ? '#D64555' : '#CCCCCC';
+    var scale = isActive ? (1 + Math.sin(Date.now() / 200) * 0.08) : 1;
+    ctx.translate(x + size / 2, y + size / 2);
+    ctx.scale(scale, scale);
+    ctx.translate(-(x + size / 2), -(y + size / 2));
+    ctx.fillStyle = shadowColor;
+    ctx.beginPath();
+    var topCurveHeight = size * 0.3;
+    ctx.moveTo(x + size / 2, y + topCurveHeight + 2);
+    ctx.bezierCurveTo(x + size / 2, y + 2, x + 2, y + 2, x + 2, y + topCurveHeight + 2);
+    ctx.bezierCurveTo(x + 2, y + size * 0.55 + 2, x + size / 2, y + size * 0.8 + 2, x + size / 2, y + size + 2);
+    ctx.bezierCurveTo(x + size / 2, y + size * 0.8 + 2, x + size - 2, y + size * 0.55 + 2, x + size - 2, y + topCurveHeight + 2);
+    ctx.bezierCurveTo(x + size - 2, y + 2, x + size / 2, y + 2, x + size / 2, y + topCurveHeight + 2);
+    ctx.fill();
+    ctx.fillStyle = mainColor;
+    ctx.beginPath();
+    ctx.moveTo(x + size / 2, y + topCurveHeight);
+    ctx.bezierCurveTo(x + size / 2, y, x, y, x, y + topCurveHeight);
+    ctx.bezierCurveTo(x, y + size * 0.55, x + size / 2, y + size * 0.8, x + size / 2, y + size);
+    ctx.bezierCurveTo(x + size / 2, y + size * 0.8, x + size, y + size * 0.55, x + size, y + topCurveHeight);
+    ctx.bezierCurveTo(x + size, y, x + size / 2, y, x + size / 2, y + topCurveHeight);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.beginPath();
+    ctx.ellipse(x + size * 0.35, y + size * 0.35, size * 0.15, size * 0.1, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+}
+
+// 主渲染方法 - 商业化布局
 GameManager.prototype.renderGame = function() {
     var ctx = this.ctx;
-    // 安全检查：确保游戏数据已初始化
     if (!this.currentLevelData || !this.currentLevelData.size) {
         console.log('[渲染] 错误: 游戏数据未初始化');
         return;
     }
     
     var GRID_SIZE = this.currentLevelData.size;
+    var marginX = 30;
+    var safeTopY = 60;
     
-    // 整体容器 - 白色圆角卡片+阴影
-    ctx.fillStyle = '#ffffff';
-    ctx.shadowColor = 'rgba(102, 126, 234, 0.2)';
-    ctx.shadowBlur = 30;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 10;
-    roundRect(ctx, 30, 30, GAME_WIDTH - 60, GAME_HEIGHT - 60, 40);
-    ctx.fill();
-    ctx.shadowColor = 'transparent';
-    ctx.shadowBlur = 0;
+    // ========== 1. 顶部导航栏 ==========
+    var navY = safeTopY;
+    var navH = 110;
     
-    // ========== 顶部区域 - 渐变背景+圆角卡片 ==========
-    var topGradient = ctx.createLinearGradient(30, 30, GAME_WIDTH - 30, 140);
-    topGradient.addColorStop(0, '#667eea');
-    topGradient.addColorStop(1, '#764ba2');
-    ctx.fillStyle = topGradient;
-    roundRect(ctx, 30, 30, GAME_WIDTH - 60, 100, 28);
+    // 导航栏渐变背景
+    var navGradient = ctx.createLinearGradient(marginX, navY, GAME_WIDTH - marginX, navY);
+    navGradient.addColorStop(0, '#7F5AF0');
+    navGradient.addColorStop(1, '#6C5CE7');
+    ctx.fillStyle = navGradient;
+    roundRect(ctx, marginX, navY, GAME_WIDTH - marginX * 2, navH, 20);
     ctx.fill();
     
-    // 设置按钮 - 圆形毛玻璃效果
-    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    // 左上角设置按钮（圆形）
+    var backBtnX = marginX + 35;
+    var backBtnY = navY + navH / 2;
+    var backBtnR = 28;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
     ctx.beginPath();
-    ctx.arc(70, 70, 24, 0, Math.PI * 2);
+    ctx.arc(backBtnX, backBtnY, backBtnR, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#ffffff';
-    ctx.font = '22px sans-serif';
+    ctx.font = '24px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('⚙', 70, 70);
+    ctx.fillText('⚙', backBtnX, backBtnY);
     
-    // 游戏名称 - 居中
+    // 右上角返回按钮（圆形）
+    var settingsBtnX = GAME_WIDTH - marginX - 35;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+    ctx.beginPath();
+    ctx.arc(settingsBtnX, backBtnY, backBtnR, 0, Math.PI * 2);
+    ctx.fill();
     ctx.fillStyle = '#ffffff';
+    ctx.fillText('🏠', settingsBtnX, backBtnY);
+    
+    // 正中间关卡标题（胶囊背景）
+    var titleText = '第' + (this.currentLevel + 1) + '关 · ' + GRID_SIZE + 'x' + GRID_SIZE;
     ctx.font = 'bold 28px sans-serif';
+    var titleWidth = ctx.measureText(titleText).width + 48;
+    var titleX = (GAME_WIDTH - titleWidth) / 2;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+    roundRect(ctx, titleX, navY + (navH - 48) / 2, titleWidth, 48, 24);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('🐱 找猫大师', GAME_WIDTH / 2, 55);
+    ctx.shadowColor = 'rgba(255, 255, 255, 0.5)';
+    ctx.shadowBlur = 8;
+    ctx.fillText(titleText, GAME_WIDTH / 2, navY + navH / 2);
+    ctx.shadowColor = 'transparent';
     
-    // ========== 信息卡片区域 ==========
-    // 关卡信息卡片
-    ctx.fillStyle = '#667eea';
-    ctx.shadowColor = 'rgba(102, 126, 234, 0.4)';
-    ctx.shadowBlur = 6;
-    ctx.shadowOffsetY = 2;
-    roundRect(ctx, 50, 155, 110, 40, 20);
+    // ========== 2. 游戏信息卡片区（三卡片横排） ==========
+    var cardY = navY + navH + 24;
+    var cardH = 90;
+    var cardW = (GAME_WIDTH - marginX * 2 - 24) / 3;
+    var cardGap = 12;
+    
+    // 左侧卡片 - 剩余猫咪
+    var card1X = marginX;
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.08)';
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetY = 4;
+    roundRect(ctx, card1X, cardY, cardW, cardH, 20);
     ctx.fill();
     ctx.shadowColor = 'transparent';
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 18px sans-serif';
+    ctx.fillStyle = '#9CA3AF';
+    ctx.font = '14px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('第 ' + (this.currentLevel + 1) + ' 关', 105, 178);
+    ctx.fillText('剩余猫咪', card1X + cardW / 2, cardY + 22);
+    var remainingCats = GRID_SIZE - (this.foundCats ? this.foundCats.length : 0);
+    ctx.fillStyle = '#2D3748';
+    ctx.font = 'bold 36px sans-serif';
+    ctx.fillText('🐱 ' + remainingCats, card1X + cardW / 2, cardY + 60);
     
-    // 生命值卡片
-    var heartY = 155;
+    // 中间卡片 - 生命值（心形）
+    var card2X = card1X + cardW + cardGap;
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.08)';
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetY = 4;
+    roundRect(ctx, card2X, cardY, cardW, cardH, 20);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.fillStyle = '#9CA3AF';
+    ctx.font = '14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('剩余生命', card2X + cardW / 2, cardY + 22);
     var maxHearts = this.maxMistakes || 2;
-    var heartSize = 26;
-    var heartSpacing = 32;
-    var totalHeartWidth = (maxHearts - 1) * heartSpacing + heartSize;
-    var startHeartX = 220 - totalHeartWidth / 2;
-    
+    var heartSize = 28;
+    var heartSpacing = 36;
+    var totalHeartsWidth = (maxHearts - 1) * heartSpacing + heartSize;
+    var startHeartX = card2X + (cardW - totalHeartsWidth) / 2;
+    var heartCenterY = cardY + 60;
     for (var h = 0; h < maxHearts; h++) {
         var heartX = startHeartX + h * heartSpacing;
-        var heartColor = this.mistakesLeft >= (h + 1) ? '#ff4757' : '#cccccc';
-        drawHeart(ctx, heartX, heartY, heartSize, heartColor);
+        draw3DHeart(ctx, heartX, heartCenterY - heartSize / 2, heartSize, this.mistakesLeft > h);
     }
     
-    // 连胜卡片
-    ctx.fillStyle = '#ff9800';
-    ctx.shadowColor = 'rgba(255, 152, 0, 0.4)';
-    ctx.shadowBlur = 6;
-    ctx.shadowOffsetY = 2;
-    roundRect(ctx, 380, 155, 100, 40, 20);
-    ctx.fill();
-    ctx.shadowColor = 'transparent';
-    ctx.shadowBlur = 0;
+    // 右侧卡片 - 连胜
+    var card3X = card2X + cardW + cardGap;
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 18px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('🔥 ' + this.streak, 430, 178);
-    
-    // ========== 中部规则提示卡片 ==========
-    ctx.fillStyle = '#fff9e6';
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.06)';
-    ctx.shadowBlur = 10;
-    ctx.shadowOffsetY = 3;
-    roundRect(ctx, 50, 220, 650, 70, 14);
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.08)';
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetY = 4;
+    roundRect(ctx, card3X, cardY, cardW, cardH, 20);
     ctx.fill();
     ctx.shadowColor = 'transparent';
-    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#9CA3AF';
+    ctx.font = '14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('连胜', card3X + cardW / 2, cardY + 22);
+    ctx.fillStyle = '#2D3748';
+    ctx.font = 'bold 36px sans-serif';
+    ctx.fillText('🔥 ' + this.streak, card3X + cardW / 2, cardY + 60);
     
-    ctx.fillStyle = '#f57c00';
-    ctx.font = 'bold 16px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('📜 游戏规则', 70, 245);
-    
-    // 规则三栏
-    var ruleY = 260;
+    // ========== 3. 游戏规则提示（药丸标签） ==========
+    var rulesY = cardY + cardH + 24;
     var rules = [
-        { icon: '🐱', text: '每种颜色1只猫' },
+        { icon: '🐱', text: '每色1只猫' },
         { icon: '📏', text: '每行每列1只' },
         { icon: '🚫', text: '猫不能相邻' }
     ];
+    var pillH = 40;
+    var pillGap = 12;
+    var totalPillsWidth = 0;
+    var pillWidths = [];
+    for (var i = 0; i < rules.length; i++) {
+        ctx.font = '16px sans-serif';
+        pillWidths[i] = ctx.measureText(rules[i].icon + ' ' + rules[i].text).width + 40;
+        totalPillsWidth += pillWidths[i];
+    }
+    totalPillsWidth += pillGap * (rules.length - 1);
+    var pillsStartX = (GAME_WIDTH - totalPillsWidth) / 2;
     
-    for (var r = 0; r < 3; r++) {
-        var ruleX = 80 + r * 210;
-        ctx.fillStyle = '#ffffff';
-        roundRect(ctx, ruleX, ruleY, 180, 26, 6);
+    for (var i = 0; i < rules.length; i++) {
+        var pillX = pillsStartX;
+        for (var j = 0; j < i; j++) pillX += pillWidths[j] + pillGap;
+        ctx.fillStyle = '#F0F2F5';
+        roundRect(ctx, pillX, rulesY, pillWidths[i], pillH, 20);
         ctx.fill();
-        ctx.fillStyle = '#555555';
-        ctx.font = '14px sans-serif';
+        ctx.fillStyle = '#5A5D6C';
+        ctx.font = '16px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(rules[r].icon + ' ' + rules[r].text, ruleX + 90, ruleY + 17);
+        ctx.textBaseline = 'middle';
+        ctx.fillText(rules[i].icon + ' ' + rules[i].text, pillX + pillWidths[i] / 2, rulesY + pillH / 2);
     }
     
-    // ========== 剩余猫咪信息 ==========
-    var remainingCats = GRID_SIZE - (this.foundCats ? this.foundCats.length : 0);
-    ctx.fillStyle = '#ff9800';
-    ctx.font = 'bold 18px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('🐱 剩余猫咪: ' + remainingCats + '/' + GRID_SIZE, GAME_WIDTH / 2, 320);
+    // ========== 4. 棋盘区域 ==========
+    var boardY = rulesY + pillH + 24;
+    this.renderModernBoard(ctx, GRID_SIZE, boardY);
     
-    // ========== 棋盘区域 ==========
-    this.renderBoard();
+    // ========== 5. 底部按钮区 ==========
+    this.renderBottomButtons(ctx);
     
-    // ========== 底部按钮 ==========
-    this.renderButtons();
-    
-    // ========== 粒子效果 ==========
+    // ========== 6. 粒子效果 ==========
     this.renderParticles();
     
-    // ========== 弹窗 ==========
+    // ========== 7. 弹窗 ==========
     if (this.gameStatus === 'win') this.renderWinModal();
     else if (this.gameStatus === 'fail') this.renderFailModal();
 };
+
+// 现代化棋盘渲染（带行列号）
+GameManager.prototype.renderModernBoard = function(ctx, GRID_SIZE, boardY) {
+    // 计算棋盘尺寸
+    var boardPadding = 12;
+    var coordSize = 26;
+    var gridAreaSize = GAME_WIDTH - 30 * 2 - boardPadding * 2 - coordSize - 8;
+    var cellSize = Math.floor(gridAreaSize / GRID_SIZE);
+    var actualBoardWidth = cellSize * GRID_SIZE;
+    
+    // 计算位置
+    var totalWidth = coordSize + 8 + actualBoardWidth + boardPadding * 2;
+    var boardX = (GAME_WIDTH - totalWidth) / 2;
+    var gridStartX = boardX + coordSize + 8 + boardPadding;
+    
+    // 保存棋盘位置供触摸检测使用
+    this._boardX = gridStartX;
+    this._boardY = boardY + boardPadding;
+    this._cellSize = cellSize;
+    this._gridSize = GRID_SIZE;
+    
+    // 棋盘外框
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.1)';
+    ctx.shadowBlur = 20;
+    ctx.shadowOffsetY = 6;
+    var boardBgW = coordSize + 8 + actualBoardWidth + boardPadding * 2;
+    roundRect(ctx, boardX, boardY, boardBgW, actualBoardWidth + boardPadding * 2, 24);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    
+    // 坐标显示模式
+    if (this.showCoords) {
+        // 绘制列号（底部）
+        var letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        for (var c = 0; c < GRID_SIZE; c++) {
+            var coordX = gridStartX + c * cellSize + cellSize / 2;
+            var coordY = boardY + actualBoardWidth + boardPadding + coordSize / 2 + 6;
+            ctx.fillStyle = '#7F5AF0';
+            ctx.beginPath();
+            ctx.arc(coordX, coordY, coordSize / 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 14px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(letters[c], coordX, coordY);
+        }
+        
+        // 绘制行号（左侧）
+        for (var r = 0; r < GRID_SIZE; r++) {
+            var displayRow = GRID_SIZE - r;
+            var coordX = boardX + boardPadding + coordSize / 2;
+            var coordY = boardY + boardPadding + r * cellSize + cellSize / 2;
+            ctx.fillStyle = '#7F5AF0';
+            ctx.beginPath();
+            ctx.arc(coordX, coordY, coordSize / 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 14px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(displayRow.toString(), coordX, coordY);
+        }
+    }
+    
+    // 绘制格子
+    var level = this.currentLevelData;
+    for (var r = 0; r < GRID_SIZE; r++) {
+        for (var c = 0; c < GRID_SIZE; c++) {
+            var x = gridStartX + c * cellSize;
+            var y = boardY + boardPadding + r * cellSize;
+            var region = level.regions[r][c];
+            var gradientColors = REGION_GRADIENTS[region] || ['#ffffff', '#cccccc'];
+            
+            var anim = Animations.get('shake_' + r + '_' + c);
+            if (anim) {
+                var progress = (Date.now() - anim.startTime) / anim.duration;
+                var offset = Math.sin(progress * Math.PI * 4) * 4 * (1 - progress);
+                ctx.save();
+                ctx.translate(offset, 0);
+            }
+            
+            // 格子渐变
+            var cellGrad = ctx.createLinearGradient(x + 3, y + 3, x + 3, y + cellSize - 3);
+            cellGrad.addColorStop(0, gradientColors[0]);
+            cellGrad.addColorStop(1, gradientColors[1]);
+            ctx.fillStyle = cellGrad;
+            roundRect(ctx, x + 3, y + 3, cellSize - 6, cellSize - 6, 12);
+            ctx.fill();
+            
+            // 高光
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+            roundRect(ctx, x + 3, y + 3, cellSize - 6, (cellSize - 6) / 2, 12);
+            ctx.fill();
+            
+            // 色盲模式标识
+            if (this.colorblindMode && COLORBLIND_COLORS[region]) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+                ctx.font = 'bold ' + (cellSize * 0.35) + 'px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(COLORBLIND_COLORS[region].pattern, x + cellSize / 2, y + cellSize / 2 + 2);
+            }
+            
+            if (anim) ctx.restore();
+        }
+    }
+    
+    // 绘制猫和标记
+    for (var r = 0; r < GRID_SIZE; r++) {
+        for (var c = 0; c < GRID_SIZE; c++) {
+            var x = gridStartX + c * cellSize;
+            var y = boardY + boardPadding + r * cellSize;
+            
+            // 找到的猫
+            if (this.findInArray(this.foundCats, r, c) !== -1) {
+                ctx.fillStyle = '#333333';
+                ctx.font = Math.floor(cellSize * 0.5) + 'px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('🐱', x + cellSize / 2, y + cellSize / 2 + 2);
+            }
+            
+            // 标记
+            if (this.findInArray(this.marks, r, c) !== -1 && this.findInArray(this.foundCats, r, c) === -1) {
+                ctx.fillStyle = '#FF4757';
+                ctx.font = 'bold ' + Math.floor(cellSize * 0.4) + 'px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('✘', x + cellSize / 2, y + cellSize / 2 + 2);
+            }
+            
+            // 提示（renderModernBoard 棋盘 y 从上到下递增，直接使用逻辑坐标比较）
+            if (this.hintCell && this.hintCell.row === r && this.hintCell.col === c && Date.now() - this.hintTimer < 2000) {
+                var hintAlpha = 0.5 + 0.5 * Math.sin((Date.now() - this.hintTimer) / 100);
+                ctx.save();
+                ctx.globalAlpha = hintAlpha;
+                ctx.strokeStyle = '#FFD700';
+                ctx.lineWidth = 4;
+                ctx.shadowColor = '#FFD700';
+                ctx.shadowBlur = 10;
+                roundRect(ctx, x + 3, y + 3, cellSize - 6, cellSize - 6, 12);
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+    }
+    
+    // 记录棋盘底部Y坐标
+    this._boardBottomY = boardY + actualBoardWidth + boardPadding * 2 + coordSize + 20;
+};
+
+// 底部四个大按钮
+GameManager.prototype.renderBottomButtons = function(ctx) {
+    var btnY = this._boardBottomY + 30 || 900;
+    var btnH = 56;
+    var btnW = (GAME_WIDTH - 30 * 2 - 36) / 4;
+    var btnGap = 12;
+    var startX = 30;
+    
+    var buttonConfigs = [
+        { name: '清空', bgColor: '#A0A0A0', icon: '🗑️' },
+        { name: '色盲', bgColor: '#7F5AF0', icon: '🎨' },
+        { name: '坐标', bgColor: '#FFC107', icon: '📍' },
+        { name: '提示', bgColor: '#FF6B6B', icon: '💡', disabled: this.hintsUsed > 0 }
+    ];
+    
+    for (var i = 0; i < 4; i++) {
+        var btn = buttonConfigs[i];
+        var x = startX + i * (btnW + btnGap);
+        var isPressed = (this._pressedButton === i) && !btn.disabled;
+        var scale = isPressed ? 0.95 : 1;
+        var isDisabled = btn.disabled || false;
+        
+        ctx.save();
+        ctx.translate(x + btnW / 2, btnY + btnH / 2);
+        ctx.scale(scale, scale);
+        ctx.translate(-(x + btnW / 2), -(btnY + btnH / 2));
+        
+        // 按钮渐变
+        var btnGrad = ctx.createLinearGradient(x, btnY, x, btnY + btnH);
+        if (isDisabled) {
+            btnGrad.addColorStop(0, '#CCCCCC');
+            btnGrad.addColorStop(1, '#AAAAAA');
+        } else {
+            btnGrad.addColorStop(0, btn.bgColor);
+            btnGrad.addColorStop(1, this._darkenColor(btn.bgColor));
+        }
+        ctx.fillStyle = btnGrad;
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.2)';
+        ctx.shadowBlur = 8;
+        ctx.shadowOffsetY = isPressed ? 2 : 4;
+        roundRect(ctx, x, btnY, btnW, btnH, 28);
+        ctx.fill();
+        ctx.shadowColor = 'transparent';
+        
+        // 高光（禁用时不显示）
+        if (!isDisabled) {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+            roundRect(ctx, x + 4, btnY + 4, btnW - 8, (btnH - 8) / 2, 24);
+            ctx.fill();
+        }
+        
+        // 文字
+        ctx.fillStyle = isDisabled ? '#888888' : '#ffffff';
+        ctx.font = 'bold 20px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(btn.icon + ' ' + btn.name, x + btnW / 2, btnY + btnH / 2 + 1);
+        
+        ctx.restore();
+    }
+    
+    // 记录按钮区域供触摸检测
+    this._btnAreaY = btnY;
+    this._btnAreaH = btnH;
+    this._btnAreaW = btnW;
+    this._btnAreaGap = btnGap;
+    this._btnAreaStartX = startX;
+};
+
+// 颜色加深辅助函数
+GameManager.prototype._darkenColor = function(hexColor) {
+    var colorMap = {
+        '#A0A0A0': '#808080',
+        '#7F5AF0': '#6C5CE7',
+        '#FFC107': '#FFB300',
+        '#FF6B6B': '#FF5252'
+    };
+    return colorMap[hexColor] || hexColor;
+};
+
+// 色盲友好模式颜色配置（使用高对比度颜色和形状区分）
+var COLORBLIND_COLORS = {
+    'A': { bg: '#FFE082', pattern: 'A', shape: 'circle' },
+    'B': { bg: '#AED581', pattern: 'B', shape: 'square' },
+    'C': { bg: '#FFCC80', pattern: 'C', shape: 'triangle' },
+    'D': { bg: '#EF9A9A', pattern: 'D', shape: 'diamond' },
+    'E': { bg: '#81D4FA', pattern: 'E', shape: 'star' },
+    'F': { bg: '#CE93D8', pattern: 'F', shape: 'heart' },
+    'G': { bg: '#80CBC4', pattern: 'G', shape: 'cross' },
+    'H': { bg: '#FFAB91', pattern: 'H', shape: 'plus' },
+    'I': { bg: '#B39DDB', pattern: 'I', shape: 'minus' },
+    'J': { bg: '#90CAF9', pattern: 'J', shape: 'dot' },
+    'K': { bg: '#FF8A65', pattern: 'K', shape: 'ring' },
+    'L': { bg: '#4DB6AC', pattern: 'L', shape: 'wave' },
+    'M': { bg: '#9575CD', pattern: 'M', shape: 'zigzag' },
+    'N': { bg: '#FF7043', pattern: 'N', shape: 'arrow' },
+    'O': { bg: '#66BB6A', pattern: 'O', shape: 'bolt' },
+    'P': { bg: '#42A5F5', pattern: 'P', shape: 'moon' },
+    'Q': { bg: '#EC407A', pattern: 'Q', shape: 'sun' },
+    'R': { bg: '#AB47BC', pattern: 'R', shape: 'cloud' },
+    'S': { bg: '#26A69A', pattern: 'S', shape: 'leaf' },
+    'T': { bg: '#5C6BC0', pattern: 'T', shape: 'box' }
+};
+
+// 绘制色盲友好模式的形状标识
+function drawColorblindShape(ctx, x, y, size, shape, color) {
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.lineWidth = 2;
+    
+    var cx = x + size / 2;
+    var cy = y + size / 2;
+    var s = size * 0.3;
+    
+    switch(shape) {
+        case 'circle':
+            ctx.beginPath();
+            ctx.arc(cx, cy, s, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            break;
+        case 'square':
+            ctx.fillRect(cx - s, cy - s, s * 2, s * 2);
+            ctx.strokeRect(cx - s, cy - s, s * 2, s * 2);
+            break;
+        case 'triangle':
+            ctx.beginPath();
+            ctx.moveTo(cx, cy - s);
+            ctx.lineTo(cx + s, cy + s);
+            ctx.lineTo(cx - s, cy + s);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            break;
+        case 'diamond':
+            ctx.beginPath();
+            ctx.moveTo(cx, cy - s);
+            ctx.lineTo(cx + s, cy);
+            ctx.lineTo(cx, cy + s);
+            ctx.lineTo(cx - s, cy);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            break;
+        case 'star':
+            ctx.beginPath();
+            for (var i = 0; i < 5; i++) {
+                var angle = (i * 4 * Math.PI / 5) - Math.PI / 2;
+                var px = cx + Math.cos(angle) * s;
+                var py = cy + Math.sin(angle) * s;
+                if (i === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            break;
+        default:
+            // 默认显示字母
+            ctx.font = 'bold ' + (size * 0.4) + 'px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillText(shape.charAt(0), cx, cy);
+    }
+    
+    ctx.restore();
+}
 
 GameManager.prototype.renderBoard = function() {
     var ctx = this.ctx;
@@ -1914,6 +2612,12 @@ GameManager.prototype.renderBoard = function() {
             ctx.fillStyle = highlight;
             roundRect(ctx, x + 4, y + 4, size, size, 14);
             ctx.fill();
+            
+            // 色盲模式：在每个格子中绘制形状标识
+            if (this.colorblindMode && COLORBLIND_COLORS[region]) {
+                var cbConfig = COLORBLIND_COLORS[region];
+                drawColorblindShape(ctx, x + 4, y + 4, size, cbConfig.shape, 'rgba(0,0,0,0.2)');
+            }
             
             if (anim) ctx.restore();
         }
@@ -1981,6 +2685,30 @@ GameManager.prototype.renderBoard = function() {
                 
                 ctx.restore();
             }
+        }
+    }
+    
+    // 坐标显示模式
+    if (this.showCoords) {
+        // 列坐标 (A, B, C, ...)
+        var letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        ctx.fillStyle = '#333333';
+        ctx.font = 'bold 14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        for (var c = 0; c < GRID_SIZE; c++) {
+            var coordX = this.boardX + c * this.cellSize + this.cellSize / 2;
+            var coordY = this.boardY - 10;
+            ctx.fillText(letters[c], coordX, coordY);
+        }
+        
+        // 行坐标 (1, 2, 3, ...)
+        for (var r = 0; r < GRID_SIZE; r++) {
+            var displayRow = GRID_SIZE - r;
+            var coordX = this.boardX - 10;
+            var coordY = this.boardY + r * this.cellSize + this.cellSize / 2;
+            ctx.fillText(displayRow.toString(), coordX, coordY);
         }
     }
     
@@ -2061,73 +2789,150 @@ GameManager.prototype.renderParticles = function() {
     ctx.globalAlpha = 1;
 };
 
+// ========== 现代化弹窗渲染方法（带弹性缓动动画） ==========
+
 GameManager.prototype.renderWinModal = function() {
     var ctx = this.ctx;
     var isLastLevel = this.currentLevel >= 4;
     
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    // 获取弹窗动画缩放值
+    var scale = this.modalScale || 1;
+    
+    // 背景蒙层（带模糊模拟效果）
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
     ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
     
-    // 统一弹窗样式：白色卡片 500x320，圆角24，位置居中
-    var modalW = 500;
-    var modalH = 320;
+    // 弹窗参数
+    var modalW = 480;
+    var modalH = 360;
     var modalX = (GAME_WIDTH - modalW) / 2;
-    var modalY = 350;
+    var modalY = (GAME_HEIGHT - modalH) / 2 - 20;
+    
+    ctx.save();
+    
+    // 中心点变换实现弹性动画
+    ctx.translate(GAME_WIDTH / 2, GAME_HEIGHT / 2);
+    ctx.scale(scale, scale);
+    ctx.translate(-GAME_WIDTH / 2, -GAME_HEIGHT / 2);
+    
+    // 白色卡片 - 双层阴影
+    ctx.shadowColor = 'rgba(102, 126, 234, 0.3)';
+    ctx.shadowBlur = 40;
+    ctx.shadowOffsetY = 15;
     
     ctx.fillStyle = '#ffffff';
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.2)';
-    ctx.shadowBlur = 20;
-    ctx.shadowOffsetY = 8;
-    roundRect(ctx, modalX, modalY, modalW, modalH, 24);
+    roundRect(ctx, modalX, modalY, modalW, modalH, 32);
     ctx.fill();
+    
+    // 内阴影高光
+    ctx.shadowColor = 'rgba(255, 255, 255, 0.6)';
+    ctx.shadowBlur = 20;
+    ctx.shadowOffsetX = -5;
+    ctx.shadowOffsetY = -5;
+    roundRect(ctx, modalX, modalY, modalW, modalH, 32);
+    ctx.fill();
+    
     ctx.shadowColor = 'transparent';
     ctx.shadowBlur = 0;
     
-    ctx.fillStyle = '#333333';
-    ctx.font = 'bold 32px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('🎉 胜利', GAME_WIDTH / 2, modalY + 60);
+    // 顶部装饰条
+    var decorGradient = ctx.createLinearGradient(modalX, modalY, modalX + modalW, modalY);
+    decorGradient.addColorStop(0, '#A78BFA');
+    decorGradient.addColorStop(0.5, '#8B5CF6');
+    decorGradient.addColorStop(1, '#7C3AED');
+    ctx.fillStyle = decorGradient;
+    roundRect(ctx, modalX, modalY, modalW, 80, 32);
+    ctx.fill();
+    ctx.fillRect(modalX, modalY + 40, modalW, 40);
     
+    // 胜利标题 - 带发光效果
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 36px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
+    ctx.shadowBlur = 10;
+    ctx.fillText('🎉 胜利', GAME_WIDTH / 2, modalY + 50);
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    
+    // 内容区域
     if (isLastLevel) {
-        ctx.font = '24px sans-serif';
-        ctx.fillText('用时: ' + this.formatTime(this.finalTime), GAME_WIDTH / 2, modalY + 100);
+        ctx.fillStyle = '#4B5563';
+        ctx.font = '22px sans-serif';
+        ctx.fillText('用时: ' + this.formatTime(this.finalTime), GAME_WIDTH / 2, modalY + 130);
         
+        // 两个按钮
         var btnWidth = 180;
-        var btnGap = 20;
+        var btnGap = 16;
+        var btnH = 52;
         var totalBtnWidth = btnWidth * 2 + btnGap;
         var btnStartX = (GAME_WIDTH - totalBtnWidth) / 2;
-        var btnY = modalY + 160;
+        var btnY = modalY + 180;
         
-        ctx.fillStyle = '#667eea';
-        roundRect(ctx, btnStartX, btnY, btnWidth, 50, 25);
+        // 重新开始按钮
+        var btn1Gradient = ctx.createLinearGradient(btnStartX, btnY, btnStartX, btnY + btnH);
+        btn1Gradient.addColorStop(0, '#8B5CF6');
+        btn1Gradient.addColorStop(1, '#7C3AED');
+        ctx.fillStyle = btn1Gradient;
+        ctx.shadowColor = 'rgba(139, 92, 246, 0.4)';
+        ctx.shadowBlur = 10;
+        ctx.shadowOffsetY = 4;
+        roundRect(ctx, btnStartX, btnY, btnWidth, btnH, 26);
         ctx.fill();
+        ctx.shadowColor = 'transparent';
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 22px sans-serif';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('重新开始', btnStartX + btnWidth / 2, btnY + 25);
+        ctx.font = 'bold 20px sans-serif';
+        ctx.fillText('重新开始', btnStartX + btnWidth / 2, btnY + btnH / 2);
         
-        ctx.fillStyle = '#f0f2f5';
-        roundRect(ctx, btnStartX + btnWidth + btnGap, btnY, btnWidth, 50, 25);
+        // 排行榜按钮
+        var btn2Gradient = ctx.createLinearGradient(btnStartX + btnWidth + btnGap, btnY, btnStartX + btnWidth + btnGap, btnY + btnH);
+        btn2Gradient.addColorStop(0, '#F59E0B');
+        btn2Gradient.addColorStop(1, '#D97706');
+        ctx.fillStyle = btn2Gradient;
+        ctx.shadowColor = 'rgba(245, 158, 11, 0.4)';
+        ctx.shadowBlur = 10;
+        ctx.shadowOffsetY = 4;
+        roundRect(ctx, btnStartX + btnWidth + btnGap, btnY, btnWidth, btnH, 26);
         ctx.fill();
-        ctx.fillStyle = '#333333';
-        ctx.font = 'bold 22px sans-serif';
-        ctx.fillText('排行榜', btnStartX + btnWidth + btnGap + btnWidth / 2, btnY + 25);
+        ctx.shadowColor = 'transparent';
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 20px sans-serif';
+        ctx.fillText('排行榜', btnStartX + btnWidth + btnGap + btnWidth / 2, btnY + btnH / 2);
     } else {
-        ctx.font = '24px sans-serif';
-        ctx.fillText('连击 +1', GAME_WIDTH / 2, modalY + 100);
+        // 连胜提示
+        ctx.fillStyle = '#8B5CF6';
+        ctx.font = 'bold 26px sans-serif';
+        ctx.fillText('🎊 连胜 +1', GAME_WIDTH / 2, modalY + 130);
         
-        var btnWidth = 180;
-        var btnY = modalY + 160;
+        // 下一关按钮
+        var btnWidth = 220;
+        var btnH = 56;
+        var btnY = modalY + 190;
         var btnX = (GAME_WIDTH - btnWidth) / 2;
         
-        ctx.fillStyle = '#667eea';
-        roundRect(ctx, btnX, btnY, btnWidth, 50, 25);
+        var btnGradient = ctx.createLinearGradient(btnX, btnY, btnX, btnY + btnH);
+        btnGradient.addColorStop(0, '#8B5CF6');
+        btnGradient.addColorStop(1, '#7C3AED');
+        ctx.fillStyle = btnGradient;
+        ctx.shadowColor = 'rgba(139, 92, 246, 0.4)';
+        ctx.shadowBlur = 12;
+        ctx.shadowOffsetY = 5;
+        roundRect(ctx, btnX, btnY, btnWidth, btnH, 28);
         ctx.fill();
+        ctx.shadowColor = 'transparent';
+        
+        // 按钮内高光
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+        roundRect(ctx, btnX + 4, btnY + 4, btnWidth - 8, (btnH - 8) / 2, 24);
+        ctx.fill();
+        
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 22px sans-serif';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('下一关', btnX + btnWidth / 2, btnY + 25);
+        ctx.font = 'bold 24px sans-serif';
+        ctx.fillText('下一关 →', GAME_WIDTH / 2, btnY + btnH / 2);
     }
+    
+    ctx.restore();
 };
 
 GameManager.prototype.formatTime = function(minutes) {
@@ -2215,34 +3020,40 @@ GameManager.prototype.renderLeaderboard = function() {
 GameManager.prototype.handleWinModalTouch = function(pos) {
     var isLastLevel = this.currentLevel >= 4;
     
-    var modalW = 500;
-    var modalH = 320;
+    // 与 renderWinModal 保持一致的坐标
+    var modalW = 480;
+    var modalH = 360;
     var modalX = (GAME_WIDTH - modalW) / 2;
-    var modalY = 350;
+    var modalY = (GAME_HEIGHT - modalH) / 2 - 20;
     
     if (isLastLevel) {
         var btnWidth = 180;
-        var btnGap = 20;
+        var btnGap = 16;
+        var btnH = 52;
         var totalBtnWidth = btnWidth * 2 + btnGap;
         var btnStartX = (GAME_WIDTH - totalBtnWidth) / 2;
-        var btnY = modalY + 160;
+        var btnY = modalY + 180;
         
-        if (pos.x >= btnStartX && pos.x <= btnStartX + btnWidth && pos.y >= btnY && pos.y <= btnY + 50) {
+        // 重新开始按钮
+        if (pos.x >= btnStartX && pos.x <= btnStartX + btnWidth && pos.y >= btnY && pos.y <= btnY + btnH) {
             this.loadLevel(0);
             this.gameStatus = 'playing';
             return;
         }
         
-        if (pos.x >= btnStartX + btnWidth + btnGap && pos.x <= btnStartX + btnWidth + btnGap + btnWidth && pos.y >= btnY && pos.y <= btnY + 50) {
+        // 排行榜按钮
+        if (pos.x >= btnStartX + btnWidth + btnGap && pos.x <= btnStartX + btnWidth + btnGap + btnWidth && pos.y >= btnY && pos.y <= btnY + btnH) {
             this.showLeaderboard = true;
             return;
         }
     } else {
-        var btnWidth = 180;
-        var btnY = modalY + 160;
+        // 下一关按钮
+        var btnWidth = 220;
+        var btnH = 56;
+        var btnY = modalY + 190;
         var btnX = (GAME_WIDTH - btnWidth) / 2;
         
-        if (pos.x >= btnX && pos.x <= btnX + btnWidth && pos.y >= btnY && pos.y <= btnY + 50) {
+        if (pos.x >= btnX && pos.x <= btnX + btnWidth && pos.y >= btnY && pos.y <= btnY + btnH) {
             var nextLevel = this.currentLevel + 1;
             if (nextLevel < 5) {
                 this.loadLevel(nextLevel);
@@ -2262,107 +3073,293 @@ GameManager.prototype.handleLeaderboardTouch = function(pos) {
     }
 };
 
+// ========== 现代化失败弹窗（带弹性缓动动画） ==========
 GameManager.prototype.renderFailModal = function() {
     var ctx = this.ctx;
     
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    // 获取弹窗动画缩放值
+    var scale = this.modalScale || 1;
+    
+    // 背景蒙层
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
     ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
     
+    // 弹窗参数
+    var modalW = 420;
+    var modalH = 340;
+    var modalX = (GAME_WIDTH - modalW) / 2;
+    var modalY = (GAME_HEIGHT - modalH) / 2 - 20;
+    
+    ctx.save();
+    
+    // 中心点变换实现弹性动画
+    ctx.translate(GAME_WIDTH / 2, GAME_HEIGHT / 2);
+    ctx.scale(scale, scale);
+    ctx.translate(-GAME_WIDTH / 2, -GAME_HEIGHT / 2);
+    
+    // 白色卡片 - 双层阴影
+    ctx.shadowColor = 'rgba(255, 71, 87, 0.3)';
+    ctx.shadowBlur = 40;
+    ctx.shadowOffsetY = 15;
+    
     ctx.fillStyle = '#ffffff';
-    roundRect(ctx, 150, 380, 450, 300, 30);
+    roundRect(ctx, modalX, modalY, modalW, modalH, 32);
     ctx.fill();
     
-    ctx.fillStyle = '#ff4757';
+    // 内阴影高光
+    ctx.shadowColor = 'rgba(255, 255, 255, 0.6)';
+    ctx.shadowBlur = 20;
+    ctx.shadowOffsetX = -5;
+    ctx.shadowOffsetY = -5;
+    roundRect(ctx, modalX, modalY, modalW, modalH, 32);
+    ctx.fill();
+    
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    
+    // 顶部装饰条 - 珊瑚红渐变
+    var decorGradient = ctx.createLinearGradient(modalX, modalY, modalX + modalW, modalY);
+    decorGradient.addColorStop(0, '#FF6B8A');
+    decorGradient.addColorStop(0.5, '#FF4757');
+    decorGradient.addColorStop(1, '#E84118');
+    ctx.fillStyle = decorGradient;
+    roundRect(ctx, modalX, modalY, modalW, 90, 32);
+    ctx.fill();
+    ctx.fillRect(modalX, modalY + 45, modalW, 45);
+    
+    // 失败标题 - 带发光效果
+    ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 36px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('失败', GAME_WIDTH / 2, 460);
-    
-    ctx.font = '26px sans-serif';
-    ctx.fillStyle = '#666666';
-    ctx.fillText('没有机会了', GAME_WIDTH / 2, 510);
-    
-    ctx.fillStyle = '#667eea';
-    roundRect(ctx, 200, 560, 350, 60, 30);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 26px sans-serif';
     ctx.textBaseline = 'middle';
-    ctx.fillText('重试', 200 + 175, 560 + 30);
+    ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
+    ctx.shadowBlur = 10;
+    ctx.fillText('💔 失败', GAME_WIDTH / 2, modalY + 55);
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    
+    // 提示文字
+    ctx.fillStyle = '#6B7280';
+    ctx.font = '22px sans-serif';
+    ctx.fillText('没有机会了，再接再厉！', GAME_WIDTH / 2, modalY + 150);
+    
+    // 重试按钮
+    var btnWidth = 200;
+    var btnH = 56;
+    var btnY = modalY + 220;
+    var btnX = (GAME_WIDTH - btnWidth) / 2;
+    
+    var btnGradient = ctx.createLinearGradient(btnX, btnY, btnX, btnY + btnH);
+    btnGradient.addColorStop(0, '#FF6B8A');
+    btnGradient.addColorStop(1, '#FF4757');
+    ctx.fillStyle = btnGradient;
+    ctx.shadowColor = 'rgba(255, 71, 87, 0.4)';
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetY = 5;
+    roundRect(ctx, btnX, btnY, btnWidth, btnH, 28);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    
+    // 按钮内高光
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+    roundRect(ctx, btnX + 4, btnY + 4, btnWidth - 8, (btnH - 8) / 2, 24);
+    ctx.fill();
+    
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 24px sans-serif';
+    ctx.fillText('🔄 重试', GAME_WIDTH / 2, btnY + btnH / 2);
+    
+    ctx.restore();
 };
 
+// ========== 底部抽屉式设置面板 ==========
 GameManager.prototype.renderSettings = function() {
     var ctx = this.ctx;
     
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    // 半透明背景遮罩
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
     ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
     
+    // 抽屉高度和位置
+    var drawerH = 480;
+    var drawerY = GAME_HEIGHT - drawerH;
+    var drawerW = GAME_WIDTH;
+    var drawerX = 0;
+    var cornerRadius = 30;
+    
+    // 底部圆角卡片
     ctx.fillStyle = '#ffffff';
-    roundRect(ctx, 125, 100, 500, 700, 24);
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.2)';
+    ctx.shadowBlur = 20;
+    ctx.shadowOffsetY = -5;
+    
+    ctx.beginPath();
+    ctx.moveTo(drawerX + cornerRadius, drawerY);
+    ctx.lineTo(drawerX + drawerW - cornerRadius, drawerY);
+    ctx.quadraticCurveTo(drawerX + drawerW, drawerY, drawerX + drawerW, drawerY + cornerRadius);
+    ctx.lineTo(drawerX + drawerW, drawerY + drawerH);
+    ctx.lineTo(drawerX, drawerY + drawerH);
+    ctx.lineTo(drawerX, drawerY + cornerRadius);
+    ctx.quadraticCurveTo(drawerX, drawerY, drawerX + cornerRadius, drawerY);
+    ctx.closePath();
     ctx.fill();
     
-    ctx.fillStyle = '#333333';
-    ctx.font = 'bold 32px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('设置', 160, 150);
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
     
-    ctx.fillStyle = '#999999';
-    ctx.font = '28px sans-serif';
-    ctx.fillText('x', 550, 150);
+    // 拖动指示条
+    ctx.fillStyle = '#E0E0E0';
+    roundRect(ctx, GAME_WIDTH / 2 - 30, drawerY + 15, 60, 5, 3);
+    ctx.fill();
     
-    ctx.font = '24px sans-serif';
-    ctx.fillText('版本: 1.0.0', 160, 210);
-    ctx.fillText('猫咪归位', 160, 250);
+    // 标题
+    ctx.fillStyle = '#1a1a2e';
+    ctx.font = 'bold 28px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('⚙️ 设置', GAME_WIDTH / 2, drawerY + 55);
     
-    var settingsY = 320;
+    // 分隔线
+    ctx.strokeStyle = '#F0F0F0';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(40, drawerY + 85);
+    ctx.lineTo(GAME_WIDTH - 40, drawerY + 85);
+    ctx.stroke();
+    
+    // 设置项
+    var settingsY = drawerY + 120;
     var settings = [
-        { name: '音乐', key: 'music', value: SaveSystem.getSetting('music') },
-        { name: '音效', key: 'sound', value: SaveSystem.getSetting('sound') },
-        { name: '震动', key: 'vibration', value: SaveSystem.getSetting('vibration') }
+        { name: '🎵 背景音乐', key: 'music', value: SaveSystem.getSetting('music') },
+        { name: '🔊 游戏音效', key: 'sound', value: SaveSystem.getSetting('sound') },
+        { name: '📳 震动反馈', key: 'vibration', value: SaveSystem.getSetting('vibration') }
     ];
     
     for (var i = 0; i < settings.length; i++) {
         var s = settings[i];
-        ctx.fillStyle = '#666666';
-        ctx.font = '26px sans-serif';
-        ctx.textAlign = 'left';
-        ctx.fillText(s.name, 160, settingsY + i * 60);
+        var sy = settingsY + i * 65;
         
-        ctx.fillStyle = s.value ? '#667eea' : '#cccccc';
-        roundRect(ctx, 450, settingsY + i * 60 - 20, 80, 40, 20);
+        // 设置项背景
+        ctx.fillStyle = '#F8F9FA';
+        roundRect(ctx, 30, sy, GAME_WIDTH - 60, 55, 12);
         ctx.fill();
+        
+        // 设置名称
+        ctx.fillStyle = '#333333';
+        ctx.font = '20px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(s.name, 50, sy + 33);
+        
+        // 开关按钮
+        var toggleW = 80;
+        var toggleH = 36;
+        var toggleX = GAME_WIDTH - 30 - toggleW;
+        var toggleY = sy + (55 - toggleH) / 2;
+        
+        // 开关背景
+        var toggleColor = s.value ? '#4CAF50' : '#E0E0E0';
+        ctx.fillStyle = toggleColor;
+        roundRect(ctx, toggleX, toggleY, toggleW, toggleH, toggleH / 2);
+        ctx.fill();
+        
+        // 开关圆点
+        var knobX = s.value ? toggleX + toggleW - toggleH + 4 : toggleX + 4;
         ctx.fillStyle = '#ffffff';
-        ctx.font = '22px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(s.value ? 'ON' : 'OFF', 490, settingsY + i * 60 + 5);
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.2)';
+        ctx.shadowBlur = 4;
+        ctx.beginPath();
+        ctx.arc(knobX + (toggleH - 8) / 2, toggleY + toggleH / 2, 14, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowColor = 'transparent';
     }
     
-    var btnY = 550;
-    var buttons = ['退出', '重玩'];
+    // 分隔线
+    ctx.strokeStyle = '#F0F0F0';
+    ctx.beginPath();
+    ctx.moveTo(40, drawerY + 340);
+    ctx.lineTo(GAME_WIDTH - 40, drawerY + 340);
+    ctx.stroke();
     
-    for (var i = 0; i < 2; i++) {
-        ctx.fillStyle = i === 1 ? '#667eea' : '#f0f2f5';
-        roundRect(ctx, 160, btnY + i * 70, 430, 55, 28);
+    // 游戏信息
+    ctx.fillStyle = '#999999';
+    ctx.font = '16px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('找猫大师 v1.0.0', GAME_WIDTH / 2, drawerY + 375);
+    
+    // 底部按钮
+    var btnY = drawerY + 395;
+    var btnW = GAME_WIDTH - 80;
+    var btnH = 55;
+    var btnGap = 15;
+    
+    // 根据来源场景决定显示的按钮
+    if (this.settingsSource === 'home') {
+        // 首页打开的设置面板 - 只显示关闭按钮
+        var closeBtnX = (GAME_WIDTH - 200) / 2;
+        ctx.fillStyle = '#667eea';
+        ctx.shadowColor = 'rgba(102, 126, 234, 0.4)';
+        ctx.shadowBlur = 10;
+        ctx.shadowOffsetY = 4;
+        roundRect(ctx, closeBtnX, btnY, 200, btnH, 28);
         ctx.fill();
-        
-        ctx.fillStyle = i === 1 ? '#ffffff' : '#333333';
-        ctx.font = '24px sans-serif';
+        ctx.shadowColor = 'transparent';
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 20px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(buttons[i], GAME_WIDTH / 2, btnY + i * 70 + 33);
+        ctx.fillText('✓ 关闭', closeBtnX + 100, btnY + btnH / 2 + 2);
+    } else {
+        // 游戏页面打开的设置面板 - 显示重玩本关和返回主页
+        // 重新开始按钮
+        var restartX = 40;
+        ctx.fillStyle = '#667eea';
+        ctx.shadowColor = 'rgba(102, 126, 234, 0.4)';
+        ctx.shadowBlur = 10;
+        ctx.shadowOffsetY = 4;
+        roundRect(ctx, restartX, btnY, (btnW - btnGap) / 2, btnH, 28);
+        ctx.fill();
+        ctx.shadowColor = 'transparent';
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 20px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('🔄 重玩本关', restartX + (btnW - btnGap) / 4, btnY + btnH / 2 + 2);
+        
+        // 返回主页按钮
+        var homeX = 40 + (btnW - btnGap) / 2 + btnGap;
+        ctx.fillStyle = '#f0f2f5';
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.1)';
+        ctx.shadowBlur = 6;
+        ctx.shadowOffsetY = 3;
+        roundRect(ctx, homeX, btnY, (btnW - btnGap) / 2, btnH, 28);
+        ctx.fill();
+        ctx.shadowColor = 'transparent';
+        ctx.fillStyle = '#666666';
+        ctx.font = 'bold 20px sans-serif';
+        ctx.fillText('🏠 返回主页', homeX + (btnW - btnGap) / 4, btnY + btnH / 2 + 2);
     }
 };
 
+// ========== 底部抽屉设置面板触摸处理 ==========
 GameManager.prototype.handleSettingsTouch = function(pos) {
-    var settingsY = 320;
-    var settings = ['music', 'sound', 'vibration'];
+    // 背景遮罩点击 - 关闭设置
+    if (pos.y < GAME_HEIGHT - 480) {
+        this.showSettings = false;
+        return;
+    }
     
+    var drawerY = GAME_HEIGHT - 480;
+    var settingsY = drawerY + 120;
+    
+    // 设置项点击
     for (var i = 0; i < 3; i++) {
-        if (pos.x >= 450 && pos.x <= 530 && pos.y >= settingsY + i * 60 - 20 && pos.y <= settingsY + i * 60 + 20) {
-            var key = settings[i];
+        var sy = settingsY + i * 65;
+        var toggleX = GAME_WIDTH - 30 - 80;
+        
+        if (pos.x >= toggleX && pos.x <= toggleX + 80 && pos.y >= sy && pos.y <= sy + 55) {
+            var keys = ['music', 'sound', 'vibration'];
+            var key = keys[i];
             var newValue = !SaveSystem.getSetting(key);
             SaveSystem.updateSetting(key, newValue);
             AudioManager.play('click');
             
-            // 处理音乐开关
             if (key === 'music') {
                 if (newValue) {
                     AudioManager.playBgMusic();
@@ -2374,23 +3371,39 @@ GameManager.prototype.handleSettingsTouch = function(pos) {
         }
     }
     
-    var btnY = 550;
-    var buttons = ['exit', 'restart'];
+    // 底部按钮
+    var btnY = drawerY + 395;
+    var btnH = 55;
     
-    for (var i = 0; i < 2; i++) {
-        if (pos.x >= 160 && pos.x <= 590 && pos.y >= btnY + i * 70 && pos.y <= btnY + i * 70 + 55) {
+    // 根据来源场景处理底部按钮
+    if (this.settingsSource === 'home') {
+        // 首页打开的设置面板 - 只有关闭按钮
+        var closeBtnX = (GAME_WIDTH - 200) / 2;
+        if (pos.x >= closeBtnX && pos.x <= closeBtnX + 200 && pos.y >= btnY && pos.y <= btnY + btnH) {
             AudioManager.play('click');
-            
-            switch(buttons[i]) {
-                case 'exit':
-                    this.showSettings = false;
-                    this.scene = 'home';
-                    break;
-                case 'restart':
-                    this.showSettings = false;
-                    this.loadLevel(this.currentLevel);
-                    break;
-            }
+            this.showSettings = false;
+            return;
+        }
+    } else {
+        // 游戏页面打开的设置面板 - 重玩本关和返回主页
+        var btnW = GAME_WIDTH - 80;
+        var btnGap = 15;
+        
+        // 重新开始按钮
+        if (pos.x >= 40 && pos.x <= 40 + (btnW - btnGap) / 2 && pos.y >= btnY && pos.y <= btnY + btnH) {
+            AudioManager.play('click');
+            this.showSettings = false;
+            this.loadLevel(this.currentLevel);
+            return;
+        }
+        
+        // 返回主页按钮
+        var homeX = 40 + (btnW - btnGap) / 2 + btnGap;
+        if (pos.x >= homeX && pos.x <= homeX + (btnW - btnGap) / 2 && pos.y >= btnY && pos.y <= btnY + btnH) {
+            AudioManager.play('click');
+            this.showSettings = false;
+            this.scene = 'home';
+            return;
         }
     }
 };
@@ -2445,28 +3458,56 @@ GameManager.prototype.renderRules = function() {
 };
 
 GameManager.prototype.handleHomeTouch = function(pos) {
-    var startY = 230;
-    var cardW = 180;
-    var cardH = 130;
-    var gap = 15;
-    var cols = 3;
-    var startX = (GAME_WIDTH - (cardW * cols + gap * (cols - 1))) / 2;
+    // 左上角设置按钮
+    var topY = 80;
+    var settingsBtnX = 60;
+    var settingsBtnY = topY + 40;
+    var btnRadius = 28;
+    
+    var distToSettings = Math.sqrt(Math.pow(pos.x - settingsBtnX, 2) + Math.pow(pos.y - settingsBtnY, 2));
+    if (distToSettings <= btnRadius + 10) {
+        if (this.scene === 'home') {
+            this.settingsSource = 'home';
+            this.showSettings = true;
+        }
+        return;
+    }
+    
+    // 右下角排行榜按钮
+    var leaderboardBtnX = GAME_WIDTH - 60;
+    var leaderboardBtnY = GAME_HEIGHT - 120;
+    var distToLeaderboard = Math.sqrt(Math.pow(pos.x - leaderboardBtnX, 2) + Math.pow(pos.y - leaderboardBtnY, 2));
+    if (distToLeaderboard <= btnRadius + 10) {
+        if (this.scene === 'home') {
+            this.showLeaderboard = true;
+        }
+        return;
+    }
+    
+    // 商业化首页关卡选择区域
+    var topY = 80;
+    var statsY = topY + 100;
+    var levelY = statsY + 130;
+    var levelCardW = 160;
+    var levelCardH = 140;
+    var levelGap = 20;
+    var levelCols = 2;
+    var levelStartX = (GAME_WIDTH - (levelCardW * levelCols + levelGap)) / 2;
     
     var unlockedLevel = SaveSystem.getUnlockedLevel();
     
     for (var i = 0; i < 5; i++) {
-        var col = i % cols;
-        var row = Math.floor(i / cols);
-        var x = startX + col * (cardW + gap);
-        var y = startY + row * (cardH + gap);
+        var col = i % levelCols;
+        var row = Math.floor(i / levelCols);
+        var x = levelStartX + col * (levelCardW + levelGap);
+        var y = levelY + 40 + row * (levelCardH + levelGap);
         
-        if (pos.x >= x && pos.x <= x + cardW && pos.y >= y && pos.y <= y + cardH) {
-            if (i <= unlockedLevel) {
-                // 已解锁，可以进入
+        if (pos.x >= x && pos.x <= x + levelCardW && pos.y >= y && pos.y <= y + levelCardH) {
+            // 第一关（i=0）始终可以进入，其他关卡需要解锁
+            if (i === 0 || i <= unlockedLevel) {
                 this.scene = 'game';
                 this.loadLevel(i);
             } else {
-                // 未解锁，显示提示
                 wx.showToast({ title: '请先解锁关卡', icon: 'none', duration: 1500 });
             }
             return;
@@ -2474,14 +3515,273 @@ GameManager.prototype.handleHomeTouch = function(pos) {
     }
 };
 
-GameManager.prototype.gameLoop = function() {
-    var self = this;
-    this.render();
+// ========== 粒子最大数量限制 ==========
+var MAX_PARTICLES = 500;
+var MAX_CAT_PARTICLES = 100;
+
+// ========== 预计算的渐变缓存 ==========
+var gradientCache = {};
+var lastCacheKey = '';
+
+// ========== 清理和重置方法 ==========
+GameManager.prototype.destroy = function() {
+    // 停止游戏循环
+    this._running = false;
     
-    var frameDelay = 1000 / 60;
-    setTimeout(function() { 
-        self.gameLoop();
-    }, frameDelay);
+    // 清空所有粒子数组
+    if (this.particles) this.particles.length = 0;
+    if (this.catParticles) this.catParticles.length = 0;
+    if (this.streakParticles) this.streakParticles.length = 0;
+    
+    // 清空动画队列
+    if (Animations && Animations.list) Animations.list.length = 0;
+    
+    // 重置状态
+    this.scene = 'home';
+    this.gameStatus = 'idle';
+    this.currentLevelData = null;
+    
+    console.log('[游戏] 实例已清理');
+};
+
+GameManager.prototype.resetAnimations = function() {
+    // 清空动画队列（但不停止当前帧）
+    if (Animations && Animations.list) {
+        Animations.list.length = 0;
+    }
+};
+
+// ========== 优化的粒子更新（带数量限制） ==========
+GameManager.prototype.updateParticles = function() {
+    // 如果粒子数量超过限制，从最老的开始删除
+    while (this.particles.length > MAX_PARTICLES) {
+        this.particles.shift();
+    }
+    
+    for (var i = this.particles.length - 1; i >= 0; i--) {
+        var p = this.particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.alpha -= 0.01;
+        if (p.y > GAME_HEIGHT || p.alpha <= 0) {
+            this.particles.splice(i, 1);
+        }
+    }
+};
+
+GameManager.prototype.updateCatParticles = function() {
+    // 限制猫粒子数量
+    while (this.catParticles.length > MAX_CAT_PARTICLES) {
+        this.catParticles.shift();
+    }
+    
+    for (var i = this.catParticles.length - 1; i >= 0; i--) {
+        var p = this.catParticles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.1; // 重力
+        p.alpha -= 0.03;
+        p.life -= 0.03;
+        p.size *= 0.97;
+        
+        if (p.alpha <= 0 || p.life <= 0) {
+            this.catParticles.splice(i, 1);
+        }
+    }
+};
+
+// ========== 预计算渐变颜色（性能优化） ==========
+function getCachedGradient(ctx, region, x, y, size) {
+    var cacheKey = region + '_' + size;
+    
+    if (!gradientCache[cacheKey] || gradientCache.cacheKey !== cacheKey) {
+        var gradientColors = REGION_GRADIENTS[region] || ['#ffffff', '#cccccc'];
+        var gradient = ctx.createLinearGradient(x, y, x, y + size);
+        gradient.addColorStop(0, gradientColors[0]);
+        gradient.addColorStop(1, gradientColors[1]);
+        gradientCache[cacheKey] = gradient;
+        gradientCache.cacheKey = cacheKey;
+        return gradient;
+    }
+    return gradientCache[cacheKey];
+}
+
+// ========== 优化的棋盘渲染 ==========
+GameManager.prototype.renderBoardOptimized = function() {
+    var ctx = this.ctx;
+    var level = this.currentLevelData;
+    
+    if (!level || !level.regions) return;
+    
+    var GRID_SIZE = level.size;
+    
+    // 预计算外框参数
+    var boardX = this.boardX - 15;
+    var boardY = this.boardY - 15;
+    var boardSize = GRID_SIZE * this.cellSize + 30;
+    
+    // 绘制外框（只绘制一次）
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = 'rgba(100, 100, 120, 0.25)';
+    ctx.shadowBlur = 20;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 8;
+    roundRect(ctx, boardX, boardY, boardSize, boardSize, 24);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    
+    // 预计算阴影样式（避免重复设置）
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.15)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetX = 2;
+    ctx.shadowOffsetY = 3;
+    
+    // 预计算高光渐变（可复用）
+    var baseHighlight = 'rgba(255, 255, 255, 0.6)';
+    var midHighlight = 'rgba(255, 255, 255, 0.15)';
+    var endHighlight = 'rgba(255, 255, 255, 0)';
+    
+    // 批量绘制所有格子
+    for (var r = 0; r < GRID_SIZE; r++) {
+        for (var c = 0; c < GRID_SIZE; c++) {
+            var x = this.boardX + c * this.cellSize;
+            var y = this.boardY + (GRID_SIZE - 1 - r) * this.cellSize;
+            var size = this.cellSize - 8;
+            
+            var region = level.regions[r][c];
+            var gradientColors = REGION_GRADIENTS[region] || ['#ffffff', '#cccccc'];
+            
+            // 检查是否有抖动动画
+            var anim = Animations.get('shake_' + r + '_' + c);
+            if (anim) {
+                var progress = (Date.now() - anim.startTime) / anim.duration;
+                var offset = Math.sin(progress * Math.PI * 4) * 5 * (1 - progress);
+                ctx.save();
+                ctx.translate(offset, 0);
+            }
+            
+            ctx.globalAlpha = 1;
+            
+            // 创建渐变填充（使用缓存）
+            var cellGradient = ctx.createLinearGradient(x + 4, y + 4, x + 4, y + size + 4);
+            cellGradient.addColorStop(0, gradientColors[0]);
+            cellGradient.addColorStop(1, gradientColors[1]);
+            ctx.fillStyle = cellGradient;
+            roundRect(ctx, x + 4, y + 4, size, size, 14);
+            ctx.fill();
+            
+            // 高光效果
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            roundRect(ctx, x + 4, y + 4, size, size / 2, 14);
+            ctx.fill();
+            
+            if (anim) ctx.restore();
+        }
+    }
+    
+    // 重置阴影
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+    
+    // 绘制猫和标记
+    for (var r = 0; r < GRID_SIZE; r++) {
+        for (var c = 0; c < GRID_SIZE; c++) {
+            var x = this.boardX + c * this.cellSize;
+            var y = this.boardY + (GRID_SIZE - 1 - r) * this.cellSize;
+            
+            // 绘制找到的猫
+            if (this.findInArray(this.foundCats, r, c) !== -1) {
+                ctx.fillStyle = '#333333';
+                ctx.font = Math.floor(this.cellSize * 0.5) + 'px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('🐱', x + this.cellSize / 2, y + this.cellSize / 2 + 2);
+            }
+            
+            // 绘制标记
+            if (this.findInArray(this.marks, r, c) !== -1 && this.findInArray(this.foundCats, r, c) === -1) {
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold ' + Math.floor(this.cellSize * 0.4) + 'px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('X', x + this.cellSize / 2, y + this.cellSize / 2 + 2);
+            }
+            
+            // 绘制提示
+            if (this.hintCell && this.hintCell.row === r && this.hintCell.col === c && Date.now() - this.hintTimer < 2000) {
+                var hintAlpha = 0.5 + 0.5 * Math.sin((Date.now() - this.hintTimer) / 100);
+                var hintX = this.boardX + c * this.cellSize;
+                var hintY = this.boardY + (GRID_SIZE - 1 - r) * this.cellSize;
+                var hintSize = this.cellSize - 6;
+                var region = level.regions[r][c];
+                var baseColor = REGION_COLORS[region] || 'rgb(200,200,200)';
+                
+                ctx.save();
+                ctx.globalAlpha = hintAlpha;
+                ctx.strokeStyle = baseColor;
+                ctx.lineWidth = 4;
+                ctx.shadowColor = baseColor;
+                ctx.shadowBlur = 15;
+                roundRect(ctx, hintX + 3, hintY + 3, hintSize, hintSize, 16);
+                ctx.stroke();
+                
+                var colorMatch = baseColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+                if (colorMatch) {
+                    ctx.fillStyle = 'rgba(' + colorMatch[1] + ',' + colorMatch[2] + ',' + colorMatch[3] + ',0.4)';
+                } else {
+                    ctx.fillStyle = 'rgba(200,100,100,0.4)';
+                }
+                roundRect(ctx, hintX + 3, hintY + 3, hintSize, hintSize, 16);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+    }
+};
+
+// ========== 使用 requestAnimationFrame 的游戏循环 ==========
+GameManager.prototype.gameLoop = function(timestamp) {
+    // 使用传入的时间戳计算 deltaTime（可选用于物理计算）
+    if (!this._lastFrameTime) {
+        this._lastFrameTime = timestamp || Date.now();
+    }
+    
+    var deltaTime = (timestamp || Date.now()) - this._lastFrameTime;
+    this._lastFrameTime = timestamp || Date.now();
+    
+    // 只在运行状态下渲染
+    if (this._running !== false) {
+        this.render();
+    }
+    
+    // 使用 requestAnimationFrame 继续循环
+    var self = this;
+    if (typeof requestAnimationFrame !== 'undefined') {
+        requestAnimationFrame(function(ts) {
+            self.gameLoop(ts);
+        });
+    } else {
+        // 微信小游戏环境回退
+        setTimeout(function() {
+            self.gameLoop(Date.now());
+        }, 16);
+    }
+};
+
+// ========== 启动游戏循环 ==========
+GameManager.prototype.startGameLoop = function() {
+    this._running = true;
+    this._lastFrameTime = null;
+    var self = this;
+    if (typeof requestAnimationFrame !== 'undefined') {
+        requestAnimationFrame(function(ts) {
+            self.gameLoop(ts);
+        });
+    } else {
+        this.gameLoop(Date.now());
+    }
 };
 
 var GameMain = {
@@ -2489,6 +3789,8 @@ var GameMain = {
         SaveSystem.init();
         var gm = new GameManager();
         gm.init();
+        // 启动游戏循环
+        gm.startGameLoop();
     }
 };
 
