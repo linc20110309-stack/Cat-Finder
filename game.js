@@ -3488,11 +3488,11 @@ GameManager.prototype.handleHomeTouch = function(pos) {
     var topY = 80;
     var statsY = topY + 100;
     var levelY = statsY + 130;
-    var levelCardW = 160;
+    var levelCardW = 200;
     var levelCardH = 140;
-    var levelGap = 20;
-    var levelCols = 2;
-    var levelStartX = (GAME_WIDTH - (levelCardW * levelCols + levelGap)) / 2;
+    var levelGap = 16;
+    var levelCols = 3;
+    var levelStartX = 50;
     
     var unlockedLevel = SaveSystem.getUnlockedLevel();
     
