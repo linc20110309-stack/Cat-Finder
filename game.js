@@ -602,7 +602,9 @@ var SaveSystem = {
         try {
             var data = wx.getStorageSync(this.STORAGE_KEY);
             if (!data) this.save(this.defaultData);
-        } catch(e) { this.save(this.defaultData); }
+        } catch(e) { 
+            this.save(this.defaultData);
+        }
     },
     load: function() {
         try {
@@ -1980,6 +1982,19 @@ GameManager.prototype.renderHome = function() {
     ctx.font = '22px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('⚙️', settingsBtnX, settingsBtnY);
+    
+    // 右下角帮助按钮（问号）
+    var helpBtnX = GAME_WIDTH - 60;
+    var helpBtnY = GAME_HEIGHT - 180;
+    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.beginPath();
+    ctx.arc(helpBtnX, helpBtnY, 28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 26px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('?', helpBtnX, helpBtnY);
     
     // 右下角排行榜按钮
     var leaderboardBtnX = GAME_WIDTH - 60;
@@ -3469,6 +3484,17 @@ GameManager.prototype.handleHomeTouch = function(pos) {
         if (this.scene === 'home') {
             this.settingsSource = 'home';
             this.showSettings = true;
+        }
+        return;
+    }
+    
+    // 右下角帮助按钮（问号）
+    var helpBtnX = GAME_WIDTH - 60;
+    var helpBtnY = GAME_HEIGHT - 180;
+    var distToHelp = Math.sqrt(Math.pow(pos.x - helpBtnX, 2) + Math.pow(pos.y - helpBtnY, 2));
+    if (distToHelp <= btnRadius + 10) {
+        if (this.scene === 'home') {
+            this.showRules = true;
         }
         return;
     }
