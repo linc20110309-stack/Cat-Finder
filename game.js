@@ -1430,15 +1430,29 @@ GameManager.prototype.handleTouch = function(type, pos) {
 
 // ========== 规则面板触摸处理 ==========
 GameManager.prototype.handleRulesTouch = function(pos) {
-    // 点击右上角关闭
-    if (pos.x >= 580 && pos.x <= 630 && pos.y >= 155 && pos.y <= 195) {
+    // 重置动画开始时间
+    this._rulesModalStartTime = null;
+    
+    // 弹窗参数（与 renderRules 保持一致）
+    var modalW = 600;
+    var modalH = 780;
+    var modalX = (GAME_WIDTH - modalW) / 2;
+    var modalY = (GAME_HEIGHT - modalH) / 2 - 20;
+    
+    // 点击蒙层关闭
+    if (pos.x < modalX || pos.x > modalX + modalW || pos.y < modalY || pos.y > modalY + modalH) {
         this.showRules = false;
         return;
     }
     
-    // 点击背景关闭
-    if (pos.x < 100 || pos.x > 650 || pos.y < 150 || pos.y > 900) {
-        this.showRules = false;
+    // 点击关闭按钮
+    if (this._rulesCloseBtn) {
+        var closeBtn = this._rulesCloseBtn;
+        var dist = Math.sqrt(Math.pow(pos.x - closeBtn.x, 2) + Math.pow(pos.y - closeBtn.y, 2));
+        if (dist <= closeBtn.r + 10) {
+            this.showRules = false;
+            return;
+        }
     }
 };
 
@@ -3423,53 +3437,248 @@ GameManager.prototype.handleSettingsTouch = function(pos) {
     }
 };
 
+// ========== 商业化规则页面渲染 ==========
 GameManager.prototype.renderRules = function() {
     var ctx = this.ctx;
     
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    // 更新动画状态
+    if (!this._rulesModalStartTime) {
+        this._rulesModalStartTime = Date.now();
+    }
+    var elapsed = Date.now() - this._rulesModalStartTime;
+    var animDuration = 250;
+    var animProgress = Math.min(1, elapsed / animDuration);
+    // 弹性缓动函数
+    var t = animProgress;
+    var scale = 0.9 + (1 - 0.9) * (1 - Math.pow(2, -10 * t) * Math.cos(t * Math.PI * 2.5) * (1 - t));
+    var alpha = animProgress;
     
+    // 背景蒙层
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.7;
+    ctx.fillStyle = 'rgba(0,0,0,1)';
+    ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    ctx.restore();
+    
+    // 弹窗参数
+    var modalW = 600;
+    var modalH = 780;
+    var modalX = (GAME_WIDTH - modalW) / 2;
+    var modalY = (GAME_HEIGHT - modalH) / 2 - 20;
+    
+    // 缩放动画中心点
+    ctx.save();
+    ctx.translate(GAME_WIDTH / 2, GAME_HEIGHT / 2);
+    ctx.scale(scale, scale);
+    ctx.translate(-GAME_WIDTH / 2, -GAME_HEIGHT / 2);
+    
+    // 白色卡片 - 浓郁阴影
+    ctx.shadowColor = 'rgba(102, 126, 234, 0.25)';
+    ctx.shadowBlur = 40;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 15;
     ctx.fillStyle = '#ffffff';
-    roundRect(ctx, 100, 150, 550, 750, 24);
+    roundRect(ctx, modalX, modalY, modalW, modalH, 32);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    
+    // ========== 顶部标题栏 ==========
+    var headerH = 60;
+    var headerY = modalY + 10;
+    
+    // 标题
+    ctx.fillStyle = '#7F5AF0';
+    ctx.font = 'bold 28px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('📖 游戏规则', modalX + 30, headerY + headerH / 2);
+    
+    // 关闭按钮（圆形）
+    var closeBtnX = modalX + modalW - 40;
+    var closeBtnY = headerY + headerH / 2;
+    var closeBtnR = 22;
+    
+    // 关闭按钮背景
+    var isCloseHovered = this._rulesCloseHovered;
+    var closeScale = isCloseHovered ? 1.1 : 1;
+    ctx.save();
+    ctx.translate(closeBtnX, closeBtnY);
+    ctx.scale(closeScale, closeScale);
+    ctx.translate(-closeBtnX, -closeBtnY);
+    
+    ctx.fillStyle = isCloseHovered ? '#FF6B8A' : '#F0F2F5';
+    ctx.beginPath();
+    ctx.arc(closeBtnX, closeBtnY, closeBtnR, 0, Math.PI * 2);
     ctx.fill();
     
-    ctx.fillStyle = '#333333';
-    ctx.font = 'bold 32px sans-serif';
+    ctx.fillStyle = isCloseHovered ? '#ffffff' : '#7F8C8D';
+    ctx.font = 'bold 20px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('游戏规则', GAME_WIDTH / 2, 200);
+    ctx.textBaseline = 'middle';
+    ctx.fillText('✕', closeBtnX, closeBtnY);
+    ctx.restore();
     
-    ctx.fillStyle = '#999999';
-    ctx.font = '26px sans-serif';
-    ctx.fillText('x', 600, 200);
+    // 保存关闭按钮位置供触摸检测
+    this._rulesCloseBtn = { x: closeBtnX, y: closeBtnY, r: closeBtnR };
     
-    var rules = [
-        '目标: 找到所有猫的位置',
-        '',
-        '规则1: 每行只能有1只猫',
-        '规则2: 每列只能有1只猫',
-        '规则3: 每个颜色只能有1只猫',
-        '规则4: 猫不能相邻',
-        '',
-        '操作:',
-        '- 点击: 标记/取消标记格子',
-        '- 双击: 确认猫的位置',
-        '- 长按: 切换标记',
-        '',
-        '生命: 随关卡增加',
-        '  1-2关: 2次',
-        '  第3关: 3次',
-        '  第4关: 4次',
-        '  第5关: 5次',
-        '',
-        '提示: 每关1次提示'
+    // 分隔线
+    ctx.strokeStyle = '#F0F2F5';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(modalX + 20, headerY + headerH + 10);
+    ctx.lineTo(modalX + modalW - 20, headerY + headerH + 10);
+    ctx.stroke();
+    
+    // ========== 核心规则区块 ==========
+    var rulesSectionY = headerY + headerH + 30;
+    var rulesCardPadding = 20;
+    var rulesCardW = modalW - 40;
+    var rulesCardH = 200;
+    
+    // 浅灰卡片背景
+    ctx.fillStyle = '#F8F9FA';
+    roundRect(ctx, modalX + 20, rulesSectionY, rulesCardW, rulesCardH, 16);
+    ctx.fill();
+    
+    // 区块标题
+    ctx.fillStyle = '#2C3E50';
+    ctx.font = 'bold 20px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('🎯 核心规则', modalX + 40, rulesSectionY + 30);
+    
+    // 4条规则
+    var coreRules = [
+        { icon: '✅', text: '每行只能有1只猫' },
+        { icon: '✅', text: '每列只能有1只猫' },
+        { icon: '✅', text: '每个颜色只能有1只猫' },
+        { icon: '🚫', text: '猫不能相邻（上下左右）' }
     ];
     
-    ctx.font = '22px sans-serif';
-    ctx.textAlign = 'left';
-    for (var i = 0; i < rules.length; i++) {
-        ctx.fillStyle = '#333333';
-        ctx.fillText(rules[i], 130, 260 + i * 35);
+    var ruleStartY = rulesSectionY + 60;
+    var ruleSpacing = 32;
+    
+    for (var i = 0; i < coreRules.length; i++) {
+        var rule = coreRules[i];
+        var ruleY = ruleStartY + i * ruleSpacing;
+        
+        // 图标
+        ctx.fillStyle = rule.icon === '✅' ? '#27AE60' : '#E74C3C';
+        ctx.font = '20px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(rule.icon, modalX + 50, ruleY);
+        
+        // 规则文字
+        ctx.fillStyle = '#2C3E50';
+        ctx.font = '20px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('规则' + (i + 1) + '：' + rule.text, modalX + 80, ruleY);
     }
+    
+    // ========== 操作说明区块 ==========
+    var opsSectionY = rulesSectionY + rulesCardH + 20;
+    
+    // 区块标题
+    ctx.fillStyle = '#2C3E50';
+    ctx.font = 'bold 20px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('👆 操作说明', modalX + 30, opsSectionY);
+    
+    // 三个药丸标签
+    var pillData = [
+        { name: '点击', icon: '👆', desc: '标记/取消标记' },
+        { name: '双击', icon: '✨', desc: '确认猫的位置' },
+        { name: '长按', icon: '✋', desc: '切换标记' }
+    ];
+    
+    var pillY = opsSectionY + 30;
+    var pillH = 70;
+    var pillW = (modalW - 80) / 3;
+    var pillGap = 10;
+    var pillStartX = modalX + 20;
+    
+    for (var i = 0; i < 3; i++) {
+        var pill = pillData[i];
+        var pillX = pillStartX + i * (pillW + pillGap);
+        
+        // 药丸背景
+        ctx.fillStyle = '#EEF2F6';
+        roundRect(ctx, pillX, pillY, pillW, pillH, 20);
+        ctx.fill();
+        
+        // 图标
+        ctx.fillStyle = '#7F5AF0';
+        ctx.font = '24px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(pill.icon, pillX + pillW / 2, pillY + 22);
+        
+        // 操作名称
+        ctx.fillStyle = '#2C3E50';
+        ctx.font = 'bold 16px sans-serif';
+        ctx.fillText(pill.name, pillX + pillW / 2, pillY + 42);
+        
+        // 说明
+        ctx.fillStyle = '#7F8C8D';
+        ctx.font = '12px sans-serif';
+        ctx.fillText(pill.desc, pillX + pillW / 2, pillY + 58);
+    }
+    
+    // ========== 生命值及提示信息区块 ==========
+    var lifeSectionY = opsSectionY + pillH + 50;
+    var lifeCardH = 150;
+    
+    // 渐变背景卡片
+    var lifeGrad = ctx.createLinearGradient(modalX + 20, lifeSectionY, modalX + 20, lifeSectionY + lifeCardH);
+    lifeGrad.addColorStop(0, '#F3E8FF');
+    lifeGrad.addColorStop(1, '#E8D5F5');
+    ctx.fillStyle = lifeGrad;
+    roundRect(ctx, modalX + 20, lifeSectionY, rulesCardW, lifeCardH, 16);
+    ctx.fill();
+    
+    // 标题
+    ctx.fillStyle = '#7F5AF0';
+    ctx.font = 'bold 20px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('❤️ 生命值规则', modalX + 40, lifeSectionY + 30);
+    
+    // 生命值说明
+    var lifeInfo = [
+        '第1-2关：2次机会',
+        '第3关：3次机会',
+        '第4关：4次机会',
+        '第5关：5次机会'
+    ];
+    
+    var lifeStartY = lifeSectionY + 55;
+    for (var i = 0; i < lifeInfo.length; i++) {
+        var infoY = lifeStartY + i * 22;
+        ctx.fillStyle = '#2C3E50';
+        ctx.font = '16px sans-serif';
+        ctx.textAlign = 'left';
+        
+        // 圆点
+        ctx.fillStyle = '#FF6B8A';
+        ctx.beginPath();
+        ctx.arc(modalX + 45, infoY - 5, 4, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.fillStyle = '#2C3E50';
+        ctx.fillText(lifeInfo[i], modalX + 60, infoY);
+    }
+    
+    // ========== 提示信息 ==========
+    var hintY = lifeSectionY + lifeCardH + 20;
+    
+    ctx.fillStyle = '#FFF8E7';
+    roundRect(ctx, modalX + 20, hintY, rulesCardW, 50, 12);
+    ctx.fill();
+    
+    ctx.fillStyle = '#F59E0B';
+    ctx.font = '18px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('💡 每关可免费使用1次提示', modalX + modalW / 2, hintY + 28);
+    
+    ctx.restore();
 };
 
 GameManager.prototype.handleHomeTouch = function(pos) {
