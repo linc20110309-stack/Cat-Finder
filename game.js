@@ -12,7 +12,7 @@ if (typeof wx !== 'undefined') {
 }
 
 /**
- * 找猫大师 - 微信小游戏完整版
+ * 猫咪归位 - 微信小游戏完整版
  * 包含：5关卡、音效、动画、UI完整复刻
  */
 
@@ -1893,7 +1893,7 @@ GameManager.prototype.renderHome = function() {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('🐱', GAME_WIDTH / 2 - 80, topY);
-    ctx.fillText('找猫大师', GAME_WIDTH / 2 + 50, topY);
+    ctx.fillText('猫咪归位', GAME_WIDTH / 2 + 50, topY);
     
     // 统计卡片
     var statsY = topY + 100;
@@ -1930,11 +1930,11 @@ GameManager.prototype.renderHome = function() {
     var levelSizes = [4, 5, 6, 7, 8];
     var levelColors = ['#7F5AF0', '#2CB67D', '#FF4D4D', '#FF9500', '#00D4AA'];
     
-    var levelCardW = 160;
+    var levelCardW = 200;
     var levelCardH = 140;
-    var levelGap = 20;
-    var levelCols = 2;
-    var levelStartX = (GAME_WIDTH - (levelCardW * levelCols + levelGap)) / 2;
+    var levelGap = 16;
+    var levelCols = 3;
+    var levelStartX = 50;
     
     for (var i = 0; i < 5; i++) {
         var col = i % levelCols;
@@ -3283,7 +3283,7 @@ GameManager.prototype.renderSettings = function() {
     ctx.fillStyle = '#999999';
     ctx.font = '16px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('找猫大师 v1.0.0', GAME_WIDTH / 2, drawerY + 375);
+    ctx.fillText('猫咪归位 v1.0.0', GAME_WIDTH / 2, drawerY + 375);
     
     // 底部按钮
     var btnY = drawerY + 395;
