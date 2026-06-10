@@ -1,126 +1,127 @@
 /**
- * 存档系统 - 使用本地存储保存游戏进度
+ * 存档系统
+ * 负责本地游戏进度的保存、读取与排行榜管理
  */
-const SaveSystem = {
+var SaveSystem = {
     STORAGE_KEY: 'cat_finder_save',
+    LEADERBOARD_KEY: 'cat_finder_leaderboard',
+    LEADERBOARD_MAX: 10,
 
-    // 默认存档数据
     defaultData: {
         currentLevel: 0,
-        completedLevels: [],
-        settings: {
-            soundEnabled: true,
-            musicEnabled: true
-        },
-        progress: {
-            easy: [],
-            normal: [],
-            hard: []
-        }
+        unlockedLevel: 0,
+        streak: 0,
+        bestStreak: 0,
+        settings: { music: false, sound: true, vibration: true },
+        playerName: 'Player'
     },
 
-    // 初始化存档
-    init() {
+    init: function() {
         try {
-            const savedData = wx.getStorageSync(this.STORAGE_KEY);
-            if (!savedData) {
-                this.save(this.defaultData);
-            }
-        } catch (e) {
-            console.error('存档初始化失败:', e);
+            var data = wx.getStorageSync(this.STORAGE_KEY);
+            if (!data) this.save(this.defaultData);
+        } catch(e) {
             this.save(this.defaultData);
         }
     },
 
-    // 获取存档
-    load() {
+    load: function() {
         try {
-            const data = wx.getStorageSync(this.STORAGE_KEY);
-            return data || this.defaultData;
-        } catch (e) {
-            console.error('读取存档失败:', e);
-            return this.defaultData;
+            var data = wx.getStorageSync(this.STORAGE_KEY);
+            return data || this._cloneDefault();
+        } catch(e) {
+            return this._cloneDefault();
         }
     },
 
-    // 保存存档
-    save(data) {
-        try {
-            wx.setStorageSync(this.STORAGE_KEY, data);
-        } catch (e) {
-            console.error('保存存档失败:', e);
+    save: function(data) {
+        try { wx.setStorageSync(this.STORAGE_KEY, data); } catch(e) {}
+    },
+
+    _cloneDefault: function() {
+        // 返回深拷贝，避免共享引用被外部修改
+        return JSON.parse(JSON.stringify(this.defaultData));
+    },
+
+    updateSetting: function(key, value) {
+        var data = this.load();
+        if (!data.settings) {
+            data.settings = { music: false, sound: true, vibration: true };
         }
-    },
-
-    // 获取当前关卡
-    getCurrentLevel() {
-        const data = this.load();
-        return data.currentLevel || 0;
-    },
-
-    // 设置当前关卡
-    setCurrentLevel(levelId) {
-        const data = this.load();
-        data.currentLevel = levelId;
+        data.settings[key] = value;
         this.save(data);
     },
 
-    // 获取已完成关卡
-    getCompletedLevels(difficulty = null) {
-        const data = this.load();
-        if (difficulty) {
-            return data.progress[difficulty] || [];
-        }
-        return data.completedLevels || [];
+    getSetting: function(key) {
+        var data = this.load();
+        return data && data.settings ? data.settings[key] : undefined;
     },
 
-    // 完成关卡
-    completeLevel(levelId, difficulty, moves = 0, time = 0) {
-        const data = this.load();
-
-        // 添加到已完成列表
-        if (!data.completedLevels.includes(levelId)) {
-            data.completedLevels.push(levelId);
-        }
-
-        // 添加到难度进度
-        if (!data.progress[difficulty].includes(levelId)) {
-            data.progress[difficulty].push(levelId);
-        }
-
-        // 保存最佳成绩
-        const key = `best_${difficulty}_${levelId}`;
-        const existing = data[key];
-        if (!existing || moves < existing.moves || time < existing.time) {
-            data[key] = { moves, time, timestamp: Date.now() };
-        }
-
+    setCurrentLevel: function(level) {
+        var data = this.load();
+        data.currentLevel = level;
         this.save(data);
     },
 
-    // 获取最佳成绩
-    getBestScore(difficulty, levelId) {
-        const data = this.load();
-        const key = `best_${difficulty}_${levelId}`;
-        return data[key] || null;
+    getCurrentLevel: function() {
+        return this.load().currentLevel || 0;
     },
 
-    // 重置存档
-    reset() {
-        this.save(this.defaultData);
+    setUnlockedLevel: function(level) {
+        var data = this.load();
+        if (level > (data.unlockedLevel || 0)) {
+            data.unlockedLevel = level;
+            this.save(data);
+        }
     },
 
-    // 获取统计数据
-    getStats() {
-        const data = this.load();
-        return {
-            totalCompleted: data.completedLevels.length,
-            easyCompleted: data.progress.easy.length,
-            normalCompleted: data.progress.normal.length,
-            hardCompleted: data.progress.hard.length
-        };
+    getUnlockedLevel: function() {
+        return this.load().unlockedLevel || 0;
+    },
+
+    setStreak: function(streak) {
+        var data = this.load();
+        data.streak = streak;
+        if (streak > (data.bestStreak || 0)) data.bestStreak = streak;
+        this.save(data);
+    },
+
+    getStreak: function() {
+        return this.load().streak || 0;
+    },
+
+    getBestStreak: function() {
+        return this.load().bestStreak || 0;
+    },
+
+    getLeaderboard: function() {
+        try {
+            var data = wx.getStorageSync(this.LEADERBOARD_KEY);
+            return data || [];
+        } catch(e) {
+            return [];
+        }
+    },
+
+    addToLeaderboard: function(name, timeMinutes) {
+        var leaderboard = this.getLeaderboard();
+        var now = new Date();
+        var dateStr = (now.getMonth() + 1) + '/' + now.getDate() + ' ' +
+                      now.getHours() + ':' + (now.getMinutes() < 10 ? '0' : '') + now.getMinutes();
+
+        leaderboard.push({ name: name, time: timeMinutes, date: dateStr });
+        leaderboard.sort(function(a, b) { return a.time - b.time; });
+        if (leaderboard.length > this.LEADERBOARD_MAX) {
+            leaderboard = leaderboard.slice(0, this.LEADERBOARD_MAX);
+        }
+
+        try { wx.setStorageSync(this.LEADERBOARD_KEY, leaderboard); } catch(e) {}
+        return leaderboard;
+    },
+
+    reset: function() {
+        this.save(this._cloneDefault());
     }
 };
 
-// 导出
-module.exports = { SaveSystem };
+module.exports = { SaveSystem: SaveSystem };
