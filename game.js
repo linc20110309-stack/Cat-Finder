@@ -1600,13 +1600,19 @@ GameManager.prototype.toggleMark = function(row, col) {
     AudioManager.play('click');
 };
 
+// ========== 检查是否获胜 ==========
 GameManager.prototype.checkWin = function() {
     var GRID_SIZE = this.currentLevelData.size;
     if (this.foundCats.length === GRID_SIZE) {
         this.gameStatus = 'win';
         this.streak++;
         SaveSystem.setStreak(this.streak);
-        SaveSystem.setUnlockedLevel(this.currentLevel + 1);
+        
+        var newUnlockedLevel = this.currentLevel + 1;
+        console.log('[过关] 当前关卡:', this.currentLevel, '新解锁关卡:', newUnlockedLevel);
+        SaveSystem.setUnlockedLevel(newUnlockedLevel);
+        console.log('[过关] 解锁后读取:', SaveSystem.getUnlockedLevel());
+        
         this.spawnParticles();
         AudioManager.play('victory');
         
@@ -3682,6 +3688,10 @@ GameManager.prototype.renderRules = function() {
 };
 
 GameManager.prototype.handleHomeTouch = function(pos) {
+    // 调试日志
+    var unlockedLevel = SaveSystem.getUnlockedLevel();
+    console.log('[首页触摸] 当前解锁关卡:', unlockedLevel);
+    
     // 左上角设置按钮
     var topY = 80;
     var settingsBtnX = 60;
