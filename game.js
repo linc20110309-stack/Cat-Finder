@@ -8,6 +8,22 @@
  *   4. 启动游戏循环
  */
 
+// ==================== 跨环境全局注册 ====================
+// 微信小游戏中每个 js 文件是独立作用域，var/const 不会跨文件共享；
+// 而子模块（home.js / game.js 场景等）的函数体内直接使用了
+// GAME_WIDTH、GAME_HEIGHT、UI、SaveSystem 等未限定的“全局名”。
+// 因此需要在主入口显式把这些跨模块共享的标识符挂到全局对象上：
+//   - 微信小游戏：GameGlobal（推荐）；同时兼容 global
+//   - 浏览器：window
+//   - Node/某些 jscore 环境：global
+function expose(name, value) {
+    var g;
+    try { g = (typeof GameGlobal !== 'undefined') ? GameGlobal : null; } catch(e) { g = null; }
+    if (g) { try { g[name] = value; } catch(e) {} }
+    try { if (typeof global !== 'undefined' && global) global[name] = value; } catch(e) {}
+    try { if (typeof window !== 'undefined' && window) window[name] = value; } catch(e) {}
+}
+
 // ==================== 全局错误捕获 ====================
 if (typeof wx !== 'undefined') {
     wx.onError(function(err) {
@@ -21,7 +37,11 @@ if (typeof wx !== 'undefined') {
     });
 }
 
-// ==================== 加载所有模块 ====================
+// ==================== 加载基础 utils 模块 ====================
+// 顺序至关重要：必须先加载子模块依赖的基础模块（constants / storage / ui 等），
+// 提取到 var 并 expose 到 GameGlobal 之后，才能 require utils/scenes/*。
+// 因为子模块的函数体中直接引用 SaveSystem / UI / GAME_WIDTH 等“全局名”，
+// 如果在 require 子模块时这些全局还没有被注册，那函数体执行时仍然会拿到 undefined。
 var constants = require('./utils/constants.js');
 var storageModule = require('./utils/storage.js');
 var audioModule = require('./utils/audio.js');
@@ -33,15 +53,8 @@ var boardModule = require('./utils/board.js');
 var levelGenModule = require('./utils/level-generator.js');
 var catSolverModule = require('./utils/cat-solver.js');
 var uiModule = require('./utils/ui.js');
-var homeModule = require('./utils/scenes/home.js');
-var gameSceneModule = require('./utils/scenes/game.js');
-var settingsModule = require('./utils/scenes/settings.js');
-var rulesModule = require('./utils/scenes/rules.js');
-var leaderboardModule = require('./utils/scenes/leaderboard.js');
-var modalsModule = require('./utils/scenes/modals.js');
 
-// ==================== 注册为全局，方便模块间使用 ====================
-// 模块内部使用未限定的全局名（如 SaveSystem / AudioManager / UI 等）
+// ==================== 提取子模块依赖的 var ====================
 var SaveSystem = storageModule.SaveSystem;
 var AudioManager = audioModule.AudioManager;
 var Animations = animationsModule.Animations;
@@ -51,14 +64,6 @@ var BoardComponent = boardModule.BoardComponent;
 var LevelGenerator = levelGenModule.LevelGenerator;
 var CatSolver = catSolverModule.CatSolver;
 var UI = uiModule.UI;
-var HomeScene = homeModule.HomeScene;
-var GameScene = gameSceneModule.GameScene;
-var SettingsScene = settingsModule.SettingsScene;
-var RulesScene = rulesModule.RulesScene;
-var LeaderboardScene = leaderboardModule.LeaderboardScene;
-var Modals = modalsModule.Modals;
-
-// ==================== 全局常量（GAME_WIDTH 等）====================
 var GAME_WIDTH = constants.GAME_WIDTH;
 var GAME_HEIGHT = constants.GAME_HEIGHT;
 var REGION_COLORS = constants.REGION_COLORS;
@@ -66,6 +71,43 @@ var REGION_GRADIENTS = constants.REGION_GRADIENTS;
 var COLORBLIND_COLORS = constants.COLORBLIND_COLORS;
 var COORD_LETTERS = constants.COORD_LETTERS;
 var draw3DHeart = drawingModule.draw3DHeart;
+
+// ==================== 注册到 GameGlobal / global / window ====================
+// 子模块（utils/scenes/* 和 utils/ui.js）的函数体直接使用了以下未限定名，
+// 必须在 require 子模块之前挂到全局，渲染时才能正确解析。
+expose('GAME_WIDTH', GAME_WIDTH);
+expose('GAME_HEIGHT', GAME_HEIGHT);
+expose('REGION_COLORS', REGION_COLORS);
+expose('REGION_GRADIENTS', REGION_GRADIENTS);
+expose('COLORBLIND_COLORS', COLORBLIND_COLORS);
+expose('COORD_LETTERS', COORD_LETTERS);
+expose('draw3DHeart', draw3DHeart);
+
+expose('SaveSystem', SaveSystem);
+expose('AudioManager', AudioManager);
+expose('Animations', Animations);
+expose('Particles', Particles);
+expose('RuleValidator', RuleValidator);
+expose('BoardComponent', BoardComponent);
+expose('LevelGenerator', LevelGenerator);
+expose('CatSolver', CatSolver);
+expose('UI', UI);
+
+// ==================== 加载场景子模块（依赖上面的全局）====================
+var homeModule = require('./utils/scenes/home.js');
+var gameSceneModule = require('./utils/scenes/game.js');
+var settingsModule = require('./utils/scenes/settings.js');
+var rulesModule = require('./utils/scenes/rules.js');
+var leaderboardModule = require('./utils/scenes/leaderboard.js');
+var modalsModule = require('./utils/scenes/modals.js');
+
+// 场景对象只在本文件内使用，不再需要 expose 到全局
+var HomeScene = homeModule.HomeScene;
+var GameScene = gameSceneModule.GameScene;
+var SettingsScene = settingsModule.SettingsScene;
+var RulesScene = rulesModule.RulesScene;
+var LeaderboardScene = leaderboardModule.LeaderboardScene;
+var Modals = modalsModule.Modals;
 
 // ==================== GameManager ====================
 function GameManager() {
@@ -174,6 +216,7 @@ GameManager.prototype.loadLevel = function(levelIndex) {
 };
 
 // ==================== 胜负判定 ====================
+//     checkWin: 胜利时记录通关时间、保存毕业证书 / 累计游玩 / 最佳时间。
 GameManager.prototype.checkWin = function() {
     if (!this.board) return;
     if (this.board.foundCats.length === this.currentLevelData.size) {
@@ -184,13 +227,14 @@ GameManager.prototype.checkWin = function() {
         var newUnlocked = this.currentLevel + 1;
         SaveSystem.setUnlockedLevel(newUnlocked);
 
+//         所有关卡通关都记录通关时间与最佳成绩
+        this.finalTime = (Date.now() - this.gameStartTime) / 60000;
+        SaveSystem.incrementTotalPlays();
+        SaveSystem.setFirstClearTime(this.finalTime);
+        SaveSystem.setBestTime(this.currentLevelData.size, this.finalTime);
+
         Particles.spawnConfetti(this.particles, 40, GAME_WIDTH);
         AudioManager.play('victory');
-
-        if (this.currentLevel >= 4) {
-            this.finalTime = (Date.now() - this.gameStartTime) / 60000;
-            SaveSystem.addToLeaderboard('Player', this.finalTime);
-        }
     }
 };
 
@@ -348,8 +392,12 @@ GameManager.prototype._handleTouch = function(type, pos) {
 
     // 游戏场景
     if (this.scene === 'game' && this.gameStatus === 'playing') {
-        if (type === 'start') GameScene.handleTouchStart(pos, this);
-        else if (type === 'end') {
+        if (type === 'start') {
+            GameScene.handleTouchStart(pos, this);
+            // 同步走棋盘触摸的 start 分支，记录按下位置/时间
+            // 以便 touchend 阶段能判断点击/双击/长按
+            this._handleBoardTouch(type, pos);
+        } else if (type === 'end') {
             var action = GameScene.handleTouchEnd(pos, this);
             if (action) {
                 this.handleButtonClick(action);

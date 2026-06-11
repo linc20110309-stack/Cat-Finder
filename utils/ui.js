@@ -90,11 +90,15 @@ var UI = {
         ctx.restore();
     },
 
-    // 信息小卡片（带阴影）
+//     信息小卡片（带阴影）
+//     如果 opts.bgColor 未传，则保留调用方当前设置的 ctx.fillStyle
+//     （使用渐变等复杂填充时调用方会自己设 fillStyle，这里不应覆盖）。
     drawInfoCard: function(ctx, x, y, w, h, opts) {
         opts = opts || {};
         ctx.save();
-        ctx.fillStyle = opts.bgColor || '#ffffff';
+        if (opts.bgColor !== undefined) {
+            ctx.fillStyle = opts.bgColor;
+        }
         if (opts.shadow !== false) {
             ctx.shadowColor = opts.shadowColor || 'rgba(0, 0, 0, 0.08)';
             ctx.shadowBlur = opts.shadowBlur || 12;
@@ -152,10 +156,14 @@ var UI = {
         return { x: modalX, y: modalY, w: modalW, h: modalH };
     },
 
-    // 时间格式化
+//     时间格式化，输出统一为 “x分y秒” 形式。
+// 用于排行榜各难度最佳、毕业证书首次通关、胜利弹窗用时等。
     formatTime: function(minutes) {
-        if (minutes < 1) return Math.round(minutes * 60) + 's';
-        return minutes.toFixed(1) + 'm';
+        var totalSeconds = Math.round((minutes || 0) * 60);
+        var m = Math.floor(totalSeconds / 60);
+        var s = totalSeconds % 60;
+        var sStr = s < 10 ? '0' + s : '' + s;
+        return m + '分' + sStr + '秒';
     },
 
     // 弹性缓动函数

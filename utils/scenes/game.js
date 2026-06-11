@@ -77,8 +77,9 @@ var GameScene = {
         var cardW = (GAME_WIDTH - marginX * 2 - 24) / 3;
         var cardGap = 12;
 
-        // 剩余猫咪
+//         剩余猫咪（drawInfoCard 保留 fillStyle，这里需显式指定白底）
         var card1X = marginX;
+        ctx.fillStyle = '#ffffff';
         UI.drawInfoCard(ctx, card1X, cardY, cardW, cardH, { radius: 20 });
         ctx.fillStyle = '#9CA3AF';
         ctx.font = '14px sans-serif';
@@ -89,8 +90,9 @@ var GameScene = {
         ctx.font = 'bold 36px sans-serif';
         ctx.fillText('🐱 ' + remainingCats, card1X + cardW / 2, cardY + 60);
 
-        // 生命值
+//         生命值（显式白底）
         var card2X = card1X + cardW + cardGap;
+        ctx.fillStyle = '#ffffff';
         UI.drawInfoCard(ctx, card2X, cardY, cardW, cardH, { radius: 20 });
         ctx.fillStyle = '#9CA3AF';
         ctx.font = '14px sans-serif';
@@ -106,8 +108,9 @@ var GameScene = {
             draw3DHeart(ctx, heartX, heartCenterY - heartSize / 2, heartSize, game.mistakesLeft > h);
         }
 
-        // 连胜
+//         连胜（显式白底）
         var card3X = card2X + cardW + cardGap;
+        ctx.fillStyle = '#ffffff';
         UI.drawInfoCard(ctx, card3X, cardY, cardW, cardH, { radius: 20 });
         ctx.fillStyle = '#9CA3AF';
         ctx.font = '14px sans-serif';

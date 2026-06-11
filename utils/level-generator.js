@@ -48,14 +48,39 @@ var LevelGenerator = {
         };
     },
 
-    // 验证区域布局是否合法
+//     验证区域布局是否合法
+//     - 满足 唯一性（每种字母恰好 size 个）、连通性
+//     - 拒绝整行/整列都同一种颜色（避免退化布局）
     _isValidRegions: function(regions, size) {
         var counts = this._countRegions(regions, size);
         if (counts.uniqueCount !== size) return false;
         for (var i = 0; i < size; i++) {
             if (counts.detail[this.LETTERS[i]] !== size) return false;
         }
-        return this._verifyConnectivity(regions, size);
+        if (!this._verifyConnectivity(regions, size)) return false;
+        if (this._hasMonochromeRowOrCol(regions, size)) return false;
+        return true;
+    },
+
+    // 检测是否存在整行或整列都是同一种颜色
+    _hasMonochromeRowOrCol: function(regions, size) {
+        for (var r = 0; r < size; r++) {
+            var first = regions[r][0];
+            var allSame = true;
+            for (var c = 1; c < size; c++) {
+                if (regions[r][c] !== first) { allSame = false; break; }
+            }
+            if (allSame) return true;
+        }
+        for (var c = 0; c < size; c++) {
+            var first = regions[0][c];
+            var allSame = true;
+            for (var r = 1; r < size; r++) {
+                if (regions[r][c] !== first) { allSame = false; break; }
+            }
+            if (allSame) return true;
+        }
+        return false;
     },
 
     _countRegions: function(regions, size) {
@@ -270,13 +295,31 @@ var LevelGenerator = {
         return true;
     },
 
+//     兑底布局：使用 Latin square（(c+r) % size） + 随机打乱列顺序。
+// 这样每行每列都不会出现同一颜色，避免退化布局。
+// CatSolver 在这种 Latin square 上一定能找到解：解为对角线 (r, c) 其中 (c + r) % size 为指定的字母。
     _generateFallbackRegions: function(size) {
         var regions = [];
         for (var r = 0; r < size; r++) {
             regions[r] = [];
-            for (var c = 0; c < size; c++) regions[r][c] = this.LETTERS[r];
+            for (var c = 0; c < size; c++) {
+                regions[r][c] = (c + r) % size;
+            }
         }
-        return regions;
+        // 随机打乱列顺序，让视觉上不那么规则
+        var colOrder = [];
+        for (var c = 0; c < size; c++) colOrder.push(c);
+        this._shuffle(colOrder);
+
+        var shuffled = [];
+        for (var r = 0; r < size; r++) {
+            shuffled[r] = [];
+            for (var newC = 0; newC < size; newC++) {
+                var oldC = colOrder[newC];
+                shuffled[r][newC] = this.LETTERS[regions[r][oldC]];
+            }
+        }
+        return shuffled;
     },
 
     _shuffle: function(arr) {
